@@ -16,6 +16,7 @@ package ai.picovoice.porcupine.sttdemo;
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -30,12 +31,18 @@ import android.widget.ToggleButton;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import java.util.ArrayList;
 import java.util.Locale;
 
 import ai.picovoice.porcupine.Porcupine;
+import ai.picovoice.porcupine.PorcupineActivationException;
+import ai.picovoice.porcupine.PorcupineActivationLimitException;
+import ai.picovoice.porcupine.PorcupineActivationRefusedException;
+import ai.picovoice.porcupine.PorcupineActivationThrottledException;
 import ai.picovoice.porcupine.PorcupineException;
+import ai.picovoice.porcupine.PorcupineInvalidArgumentException;
 import ai.picovoice.porcupine.PorcupineManager;
 import ai.picovoice.porcupine.PorcupineManagerCallback;
 
@@ -47,6 +54,8 @@ enum AppState {
 
 public class MainActivity extends AppCompatActivity {
     private PorcupineManager porcupineManager = null;
+
+    private static final String ACCESS_KEY = "${YOUR_ACCESS_KEY_HERE}";
 
     private final Porcupine.BuiltInKeyword defaultKeyword = Porcupine.BuiltInKeyword.PORCUPINE;
 
@@ -62,32 +71,24 @@ public class MainActivity extends AppCompatActivity {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
     }
 
-    private PorcupineManager initPorcupine() throws PorcupineException {
-        return new PorcupineManager.Builder()
-                .setKeyword(defaultKeyword)
-                .setSensitivity(0.7f)
-                .build(getApplicationContext(), new PorcupineManagerCallback() {
-                    @Override
-                    public void invoke(int keywordIndex) {
-                        runOnUiThread(new Runnable() {
-                            @Override
-                            public void run() {
-                                intentTextView.setText("");
-                                try {
-                                    // needs to stop porcupine manager before speechRecognizer can start listening.
-                                    porcupineManager.stop();
-                                } catch (PorcupineException e) {
-                                    displayError("Failed to stop Porcupine.");
-                                    return;
-                                }
+    private final PorcupineManagerCallback porcupineManagerCallback = new PorcupineManagerCallback() {
+        @Override
+        public void invoke(int keywordIndex) {
+            runOnUiThread(() -> {
+                intentTextView.setText("");
+                try {
+                    // need to stop porcupine manager before speechRecognizer can start listening.
+                    porcupineManager.stop();
+                } catch (PorcupineException e) {
+                    displayError("Failed to stop Porcupine.");
+                    return;
+                }
 
-                                speechRecognizer.startListening(speechRecognizerIntent);
-                                currentState = AppState.STT;
-                            }
-                        });
-                    }
-                });
-    }
+                speechRecognizer.startListening(speechRecognizerIntent);
+                currentState = AppState.STT;
+            });
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -104,16 +105,48 @@ public class MainActivity extends AppCompatActivity {
 
         speechRecognizerIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         speechRecognizerIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
-        speechRecognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        speechRecognizerIntent.putExtra(
+                RecognizerIntent.EXTRA_LANGUAGE_MODEL, 
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         speechRecognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
 
         try {
-            porcupineManager = initPorcupine();
+            porcupineManager = new PorcupineManager.Builder()
+                    .setAccessKey(ACCESS_KEY)
+                    .setKeyword(defaultKeyword)
+                    .setSensitivity(0.7f)
+                    .build(getApplicationContext(), porcupineManagerCallback);
+
+        } catch (PorcupineInvalidArgumentException e) {
+            onPorcupineInitError(e.getMessage());
+        } catch (PorcupineActivationException e) {
+            onPorcupineInitError("AccessKey activation error");
+        } catch (PorcupineActivationLimitException e) {
+            onPorcupineInitError("AccessKey reached its device limit");
+        } catch (PorcupineActivationRefusedException e) {
+            onPorcupineInitError("AccessKey refused");
+        } catch (PorcupineActivationThrottledException e) {
+            onPorcupineInitError("AccessKey has been throttled");
         } catch (PorcupineException e) {
-            displayError("Failed to initialize Porcupine.");
+            onPorcupineInitError("Failed to initialize Porcupine " + e.getMessage());
         }
 
         currentState = AppState.STOPPED;
+    }
+
+    private void onPorcupineInitError(final String errorMessage) {
+        runOnUiThread(() -> {
+            TextView errorText = findViewById(R.id.errorMessage);
+            errorText.setText(errorMessage);
+            errorText.setVisibility(View.VISIBLE);
+
+            ToggleButton recordButton = findViewById(R.id.record_button);
+            recordButton.setBackground(ContextCompat.getDrawable(
+                    getApplicationContext(),
+                    R.drawable.disabled_button_background));
+            recordButton.setChecked(false);
+            recordButton.setEnabled(false);
+        });
     }
 
     @Override
@@ -128,7 +161,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private boolean hasRecordPermission() {
-        return ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+        return ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == 
+            PackageManager.PERMISSION_GRANTED;
     }
 
     private void requestRecordPermission() {
@@ -143,8 +177,12 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void run() {
                 if (currentState == AppState.WAKEWORD) {
-                    porcupineManager.start();
-                    intentTextView.setTextColor(getResources().getColor(android.R.color.white));
+                    try {
+                        porcupineManager.start();
+                    } catch (PorcupineException e) {
+                        displayError("Failed to start porcupine.");
+                    }
+                    intentTextView.setTextColor(Color.WHITE);
                     intentTextView.setText("Listening for " + defaultKeyword + " ...");
                 }
             }
@@ -152,11 +190,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void stopService() {
-        try {
-            porcupineManager.stop();
-        } catch (PorcupineException e) {
-            displayError("Failed to stop porcupine.");
+        if (porcupineManager != null) {
+            try {
+                porcupineManager.stop();
+            } catch (PorcupineException e) {
+                displayError("Failed to stop porcupine.");
+            }
         }
+
         intentTextView.setText("");
         speechRecognizer.stopListening();
         speechRecognizer.destroy();
@@ -164,11 +205,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+    public void onRequestPermissionsResult(
+            int requestCode,
+            @NonNull String[]
+            permissions,
+            @NonNull int[] grantResults
+    ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (grantResults.length == 0 || grantResults[0] == PackageManager.PERMISSION_DENIED) {
-            recordButton.toggle();
-            displayError("Permission denied.");
+            onPorcupineInitError("Microphone permission is required for this demo");
         } else {
             speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
             speechRecognizer.setRecognitionListener(new SpeechListener());
@@ -229,6 +274,7 @@ public class MainActivity extends AppCompatActivity {
                         displayError("No recognition result matched.");
                         playback(1000);
                     }
+                    return;
                 case SpeechRecognizer.ERROR_CLIENT:
                     return;
                 case SpeechRecognizer.ERROR_RECOGNIZER_BUSY:
@@ -251,7 +297,7 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onResults(Bundle results) {
             ArrayList<String> data = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-            intentTextView.setTextColor(getResources().getColor(android.R.color.white));
+            intentTextView.setTextColor(Color.WHITE);
             intentTextView.setText(data.get(0));
 
             playback(3000);
@@ -260,7 +306,7 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onPartialResults(Bundle partialResults) {
             ArrayList<String> data = partialResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-            intentTextView.setTextColor(getResources().getColor(android.R.color.darker_gray));
+            intentTextView.setTextColor(Color.DKGRAY);
             intentTextView.setText(data.get(0));
         }
 

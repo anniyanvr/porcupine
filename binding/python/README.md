@@ -7,21 +7,31 @@ applications. It is
 
 - using deep neural networks trained in real-world environments.
 - compact and computationally-efficient. It is perfect for IoT.
-- cross-platform. Raspberry Pi, BeagleBone, Android, iOS, Linux (x86_64), macOS (x86_64), Windows (x86_64), and web
-browsers are supported. Additionally, enterprise customers have access to ARM Cortex-M SDK.
+- cross-platform:
+  - Arm Cortex-M, STM32, and Arduino
+  - Raspberry Pi (Zero, 3, 4, 5)
+  - Android and iOS
+  - Chrome, Safari, Firefox, and Edge
+  - Linux (x86_64), macOS (x86_64, arm64), and Windows (x86_64, arm64)
 - scalable. It can detect multiple always-listening voice commands with no added runtime footprint.
-- self-service. Developers can train custom wake word models using [Picovoice Console](https://picovoice.ai/console/).
+- self-service. Developers can train custom wake word models using [Picovoice Console](https://console.picovoice.ai/).
 
 ## Compatibility
 
-- Python 3
-- Runs on Linux (x86_64), macOS (x86_64), Windows (x86_64), Raspberry Pi, NVIDIA Jetson (Nano), and BeagleBone.
+- Python 3.9+
+- Runs on Linux (x86_64), macOS (x86_64 and arm64), Windows (x86_64, arm64), and Raspberry Pi (Zero, 3, 4, 5).
 
 ## Installation
 
 ```console
 pip3 install pvporcupine
 ```
+
+## AccessKey
+
+Porcupine requires a valid Picovoice `AccessKey` at initialization. `AccessKey` acts as your credentials when using Porcupine SDKs.
+You can get your `AccessKey` for free. Make sure to keep your `AccessKey` secret.
+Signup or Login to [Picovoice Console](https://console.picovoice.ai/) to get your `AccessKey`.
 
 ## Usage
 
@@ -30,7 +40,9 @@ Create an instance of the engine
 ```python
 import pvporcupine
 
-handle = pvporcupine.create(keywords=['picovoice'])
+access_key = "${ACCESS_KEY}" # AccessKey obtained from Picovoice Console (https://console.picovoice.ai/)
+
+handle = pvporcupine.create(access_key=access_key, keywords=['picovoice'])
 ```
 
 `handle` is an instance of Porcupine that detects utterances of "Picovoice". `keywords` input argument is a shorthand
@@ -47,7 +59,9 @@ Porcupine can detect multiple keywords concurrently
 ```python
 import pvporcupine
 
-handle = pvporcupine.create(keywords=['bumblebee', 'picovoice'])
+access_key = "${ACCESS_KEY}" # AccessKey obtained from Picovoice Console (https://console.picovoice.ai/)
+
+handle = pvporcupine.create(access_key=access_key, keywords=['bumblebee', 'picovoice'])
 ```
 
 To detect non-default keywords use `keyword_paths` input argument instead
@@ -55,9 +69,10 @@ To detect non-default keywords use `keyword_paths` input argument instead
 ```python
 import pvporcupine
 
+access_key = "${ACCESS_KEY}" # AccessKey obtained from Picovoice Console (https://console.picovoice.ai/)
 keyword_paths = ['/absolute/path/to/keyword/one', '/absolute/path/to/keyword/two', ...]
 
-handle = pvporcupine.create(keyword_paths=keyword_paths)
+handle = pvporcupine.create(access_key=access_key, keyword_paths=keyword_paths)
 ```
 
 The sensitivity of the engine can be tuned per keyword using the `sensitivities` input argument
@@ -65,7 +80,10 @@ The sensitivity of the engine can be tuned per keyword using the `sensitivities`
 ```python
 import pvporcupine
 
+access_key = "${ACCESS_KEY}" # AccessKey obtained from Picovoice Console (https://console.picovoice.ai/)
+
 handle = pvporcupine.create(
+        access_key=access_key,
         keywords=['grapefruit', 'porcupine'],
         sensitivities=[0.6, 0.35])
 ```
@@ -96,7 +114,26 @@ handle.delete()
 
 ## Non-English Wake Words
 
-In order to detect non-English wake words you need to use the corresponding model file. The model files for all supported languages are available [here](/lib/common).
+In order to detect non-English wake words you need to use the corresponding model file. The model files for all supported languages are available [here](https://github.com/Picovoice/porcupine/tree/master/lib/common).
+
+## Non-English Contexts
+
+In order to run inference on non-English contexts you need to use the corresponding model file. The model files for all supported languages are available [here](../../lib/common).
+
+## Train Models over API
+
+You can train models over API without going to the console:
+
+```python
+train_wake_word_from_phrase(
+        "${ACCESS_KEY}",                             # AccessKey obtained from Picovoice Console (https://console.picovoice.ai/)
+        "${OUTPUT_PATH}",                            # Path to save the newly trained model
+        "${LANGUAGE}",                               # Two-character language code
+        "${PHRASE}",                                 # Phrase to create a wake word from
+        "${PLATFORM}")                               # Optional platform for the trained model. If None, the default(current) platform is used.
+```
+
+Check [Porcupine Model API](https://picovoice.ai/docs/model-api/porcupine/) docs for a list of supported languages and platforms.
 
 ## Demos
 

@@ -1,7 +1,9 @@
 node_modules
-.rts2_cache/
-.idea/
-*.log
-.DS_Store
-porcupine-web-*
-**/pv_porcupine_b64.js
+dist
+src/lib/*
+keywords
+test/keywords/*.ppn
+cypress/fixtures/audio_samples/*
+test/porcupine_params*.js
+test/porcupine_params*.pv
+test/test_data.json

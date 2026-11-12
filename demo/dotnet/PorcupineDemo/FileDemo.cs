@@ -1,5 +1,5 @@
 ﻿/*
-    Copyright 2020-2021 Picovoice Inc.
+    Copyright 2020-2025 Picovoice Inc.
 
     You may not use this file except in compliance with the license. A copy of the license is located in the "LICENSE"
     file accompanying this source.
@@ -23,79 +23,86 @@ namespace PorcupineDemo
     /// <summary>
     /// File Demo for Porcupine wake word engine. It takes an input audio file and a list of keywords to search for
     /// and prints the where in the file it detects instances of the keywords.
-    /// </summary>                
+    /// </summary>
     public class FileDemo
     {
 
         /// <summary>
         /// Reads through input file and, upon detecting the specified wake word(s), prints the detection timecode and the wake word.
         /// </summary>
-        /// <param name="inputAudioPath">Required argument. Absolute path to input audio file.</param>                
+        /// <param name="inputAudioPath">Required argument. Absolute path to input audio file.</param>
+        /// <param name="accessKey">AccessKey obtained from Picovoice Console (https://console.picovoice.ai/).</param>
         /// <param name="modelPath">Absolute path to the file containing model parameters. If not set it will be set to the default location.</param>
-        /// <param name="keywordPaths">Absolute paths to keyword model files. If not set it will be populated from `keywords` argument.</param>              
+        /// <param name="device">
+        /// String representation of the device (e.g., CPU or GPU) to use. If set to `best`, the most
+        /// suitable device is selected automatically. If set to `gpu`, the engine uses the first available GPU device. To select a specific
+        /// GPU device, set this argument to `gpu:${GPU_INDEX}`, where `${GPU_INDEX}` is the index of the target GPU. If set to
+        /// `cpu`, the engine will run on the CPU with the default number of threads. To specify the number of threads, set this
+        /// argument to `cpu:${NUM_THREADS}`, where `${NUM_THREADS}` is the desired number of threads.
+        /// </param>
+        /// <param name="keywordPaths">Absolute paths to keyword model files. If not set it will be populated from `keywords` argument.</param>
         /// <param name="sensitivities">
-        /// Sensitivities for detecting keywords. Each value should be a number within [0, 1]. A higher sensitivity results in fewer 
+        /// Sensitivities for detecting keywords. Each value should be a number within [0, 1]. A higher sensitivity results in fewer
         /// misses at the cost of increasing the false alarm rate. If not set 0.5 will be used.
         /// </param>
-        /// <param name="keywords">
-        /// List of keywords (phrases) for detection. The list of available (default) keywords can be retrieved 
-        /// using `Porcupine.KEYWORDS`. If `keyword_paths` is set then this argument will be ignored.
-        /// </param>
-        public static void RunDemo(string inputAudioPath, string modelPath, List<string> keywordPaths, List<string> keywords, List<float> sensitivities)
+        public static void RunDemo(
+            string inputAudioPath,
+            string accessKey,
+            string modelPath,
+            string device,
+            List<string> keywordPaths,
+            List<float> sensitivities)
         {
-            Porcupine porcupine = null;
-            try
+            // init porcupine wake word engine
+            using (Porcupine porcupine = Porcupine.FromKeywordPaths(
+                accessKey,
+                keywordPaths,
+                modelPath: modelPath,
+                device: device,
+                sensitivities: sensitivities))
             {
-                // init porcupine wake word engine
-                porcupine = Porcupine.Create(modelPath, keywordPaths, keywords, sensitivities);
-
                 // get keyword names for labeling detection results
-                if (keywords == null)
+                List<string> keywordNames = keywordPaths.Select(k => Path.GetFileNameWithoutExtension(k).Split("_")[0]).ToList();
+
+                using (BinaryReader reader = new BinaryReader(File.Open(inputAudioPath, FileMode.Open)))
                 {
-                    keywords = keywordPaths.Select(k => Path.GetFileNameWithoutExtension(k).Split("_")[0]).ToList();
-                }
+                    ValidateWavFile(reader, porcupine.SampleRate, 16, out short numChannels);
 
-                using BinaryReader reader = new BinaryReader(File.Open(inputAudioPath, FileMode.Open));
-                ValidateWavFile(reader, porcupine.SampleRate, 16, out short numChannels);
+                    // read audio and send frames to porcupine
+                    short[] porcupineFrame = new short[porcupine.FrameLength];
+                    int frameIndex = 0;
+                    long totalSamplesRead = 0;
 
-                // read audio and send frames to porcupine                
-                short[] porcupineFrame = new short[porcupine.FrameLength];
-                int frameIndex = 0;
-                long totalSamplesRead = 0;
-
-                Stopwatch stopWatch = new Stopwatch();
-                stopWatch.Start();
-                while (reader.BaseStream.Position != reader.BaseStream.Length)
-                {
-                    totalSamplesRead++;
-                    porcupineFrame[frameIndex++] = reader.ReadInt16();
-
-                    if (frameIndex == porcupineFrame.Length)
+                    Stopwatch stopWatch = new Stopwatch();
+                    stopWatch.Start();
+                    while (reader.BaseStream.Position != reader.BaseStream.Length)
                     {
-                        int result = porcupine.Process(porcupineFrame);
-                        if (result >= 0)
+                        totalSamplesRead++;
+                        porcupineFrame[frameIndex++] = reader.ReadInt16();
+
+                        if (frameIndex == porcupineFrame.Length)
                         {
-                            Console.WriteLine($"Detected {keywords[result]} at " +
-                                $"{Math.Round(totalSamplesRead / (double)porcupine.SampleRate, 2)} sec");
+                            int result = porcupine.Process(porcupineFrame);
+                            if (result >= 0)
+                            {
+                                Console.WriteLine($"Detected {keywordNames[result]} at " +
+                                    $"{Math.Round(totalSamplesRead / (double)porcupine.SampleRate, 2)} sec");
+                            }
+                            frameIndex = 0;
                         }
-                        frameIndex = 0;
-                    }
 
-                    // skip right channel
-                    if (numChannels == 2)
-                    {
-                        reader.ReadInt16();
+                        // skip right channel
+                        if (numChannels == 2)
+                        {
+                            _ = reader.ReadInt16();
+                        }
                     }
+                    stopWatch.Stop();
+                    double audioLen = Math.Round(totalSamplesRead / (double)porcupine.SampleRate, 2);
+                    double realtimeFactor = Math.Round(audioLen / stopWatch.Elapsed.TotalSeconds, 2);
+                    Console.WriteLine($"Realtime factor: {realtimeFactor}x");
                 }
-                stopWatch.Stop();
-                double audioLen = Math.Round(totalSamplesRead / (double)porcupine.SampleRate, 2);                
-                double realtimeFactor = Math.Round(audioLen / stopWatch.Elapsed.TotalSeconds, 2);
-                Console.WriteLine($"Realtime factor: {realtimeFactor}x");
             }
-            finally
-            {
-                porcupine?.Dispose();
-            }           
         }
 
 
@@ -103,11 +110,11 @@ namespace PorcupineDemo
         ///  Reads RIFF header of a WAV file and validates its properties against Picovoice audio processing requirements
         /// </summary>
         /// <param name="reader">WAV file stream reader</param>
-        /// <param name="requiredSampleRate">Required sample rate in Hz</param>     
-        /// <param name="requiredBitDepth">Required number of bits per sample</param>             
+        /// <param name="requiredSampleRate">Required sample rate in Hz</param>
+        /// <param name="requiredBitDepth">Required number of bits per sample</param>
         /// <param name="numChannels">Number of channels can be returned by function</param>
-        public static void ValidateWavFile(BinaryReader reader, int requiredSampleRate, short requiredBitDepth, out short numChannels) 
-        {                        
+        public static void ValidateWavFile(BinaryReader reader, int requiredSampleRate, short requiredBitDepth, out short numChannels)
+        {
             byte[] riffHeader = reader?.ReadBytes(44);
 
             int riff = BitConverter.ToInt32(riffHeader, 0);
@@ -135,18 +142,21 @@ namespace PorcupineDemo
         public static void Main(string[] args)
         {
             AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
-            if (args.Length == 0) 
+            if (args.Length == 0)
             {
                 Console.WriteLine(HELP_STR);
-                Console.ReadKey();
+                _ = Console.Read();
                 return;
             }
 
+            string inputAudioPath = null;
+            string accessKey = null;
             List<string> keywords = null;
             List<string> keywordPaths = null;
             List<float> sensitivities = null;
-            string modelPath = null;            
-            string inputAudioPath = null;            
+            string modelPath = null;
+            string device = null;
+            bool showInferenceDevices = false;
             bool showHelp = false;
 
             // parse command line arguments
@@ -160,6 +170,13 @@ namespace PorcupineDemo
                         inputAudioPath = args[argIndex++];
                     }
                 }
+                else if (args[argIndex] == "--access_key")
+                {
+                    if (++argIndex < args.Length)
+                    {
+                        accessKey = args[argIndex++];
+                    }
+                }
                 else if (args[argIndex] == "--keywords")
                 {
                     argIndex++;
@@ -167,7 +184,7 @@ namespace PorcupineDemo
                     while (argIndex < args.Length && !args[argIndex].StartsWith("--"))
                     {
                         keywords.Add(args[argIndex++]);
-                    }                    
+                    }
                 }
                 else if (args[argIndex] == "--keyword_paths")
                 {
@@ -176,7 +193,7 @@ namespace PorcupineDemo
                     while (argIndex < args.Length && !args[argIndex].StartsWith("--"))
                     {
                         keywordPaths.Add(args[argIndex++]);
-                    }                    
+                    }
                 }
                 else if (args[argIndex] == "--model_path")
                 {
@@ -185,17 +202,29 @@ namespace PorcupineDemo
                         modelPath = args[argIndex++];
                     }
                 }
+                else if (args[argIndex] == "--device")
+                {
+                    if (++argIndex < args.Length)
+                    {
+                        device = args[argIndex++];
+                    }
+                }
                 else if (args[argIndex] == "--sensitivities")
                 {
                     argIndex++;
                     sensitivities = new List<float>();
-                    while (argIndex < args.Length && !args[argIndex].StartsWith("--") && 
+                    while (argIndex < args.Length && !args[argIndex].StartsWith("--") &&
                            float.TryParse(args[argIndex], out float sensitivity))
                     {
                         sensitivities.Add(sensitivity);
                         argIndex++;
                     }
-                }                
+                }
+                else if (args[argIndex] == "--show_inference_devices")
+                {
+                    showInferenceDevices = true;
+                    argIndex++;
+                }
                 else if (args[argIndex] == "-h" || args[argIndex] == "--help")
                 {
                     showHelp = true;
@@ -211,7 +240,13 @@ namespace PorcupineDemo
             if (showHelp)
             {
                 Console.WriteLine(HELP_STR);
-                Console.ReadKey();
+                _ = Console.Read();
+                return;
+            }
+
+            if (showInferenceDevices)
+            {
+                Console.WriteLine(string.Join(Environment.NewLine, Porcupine.GetAvailableDevices()));
                 return;
             }
 
@@ -220,46 +255,59 @@ namespace PorcupineDemo
             {
                 throw new ArgumentNullException("input_audio_path");
             }
-            if (!File.Exists(inputAudioPath)) 
+            if (!File.Exists(inputAudioPath))
             {
                 throw new ArgumentException($"Audio file at path {inputAudioPath} does not exist");
             }
 
-            // argument validation            
             if ((keywordPaths == null || keywordPaths.Count == 0) && (keywords == null || keywords.Count == 0))
             {
-                throw new ArgumentNullException("keywords", "Either '--keywords' or '--keyword_paths' must be set.");
+                throw new ArgumentException("Either '--keywords' or '--keyword_paths' must be set.");
             }
 
-            int keywordCount = keywordPaths?.Count ?? keywords.Count;
-
-            if (sensitivities == null)
+            if (keywords != null)
             {
-                sensitivities = Enumerable.Repeat(0.5f, keywordCount).ToList();
-            }
-
-            if (sensitivities.Count != keywordCount)
-            {
-                throw new ArgumentException($"Number of keywords ({keywordCount}) does not match number of sensitivities ({sensitivities.Count})");
+                keywordPaths = new List<string>();
+                foreach (string k in keywords)
+                {
+                    if (!Enum.TryParse(typeof(BuiltInKeyword), k.ToUpper().Replace(" ", "_"), out object builtin))
+                    {
+                        throw new ArgumentException($"Keyword '{k}' is not a valid built-in keyword. Available built-ins are: " +
+                            $"{string.Join(",", Enum.GetNames(typeof(BuiltInKeyword)).Select(x => x.ToLower().Replace("_", " ")))}");
+                    }
+                    else
+                    {
+                        keywordPaths.Add(Porcupine.BUILT_IN_KEYWORD_PATHS[(BuiltInKeyword)builtin]);
+                    }
+                }
             }
 
             // run demo with validated arguments
-            RunDemo(inputAudioPath, modelPath, keywordPaths, keywords, sensitivities);
+            RunDemo(
+                inputAudioPath,
+                accessKey,
+                modelPath,
+                device,
+                keywordPaths,
+                sensitivities);
         }
 
         private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
         {
             Console.WriteLine(e.ExceptionObject.ToString());
-            Console.ReadKey();
-            Environment.Exit(-1);
+            Environment.Exit(1);
         }
 
         private static readonly string HELP_STR = "Available options: \n " +
-            $"\t--input_audio_path (required): Absolute path to input audio file.\n" +
-            $"\t--keywords: List of default keywords for detection. Available keywords: {string.Join(", ", Porcupine.KEYWORDS)}\n" +
-            $"\t--keyword_paths: Absolute paths to keyword model files. If not set it will be populated from `--keywords` argument\n" +
-            $"\t--model_path: Absolute path to the file containing model parameters.\n" +
-            $"\t--sensitivities: Sensitivities for detecting keywords. Each value should be a number within [0, 1]. A higher \n" +
-             "\t\tsensitivity results in fewer misses at the cost of increasing the false alarm rate. If not set 0.5 will be used.\n";
+            "\t--input_audio_path (required): Absolute path to input audio file.\n" +
+            "\t--access_key (required): AccessKey obtained from Picovoice Console (https://console.picovoice.ai/)\n" +
+            "\t--keywords: List of built-in keywords for detection. \n" +
+            $"\t\tAvailable keywords: {string.Join(",", Enum.GetNames(typeof(BuiltInKeyword)).Select(k => k.ToLower().Replace("_", " ")))}\n" +
+            "\t--keyword_paths: Absolute paths to keyword model files. If not set it will be populated from `--keywords` argument\n" +
+            "\t--model_path: Absolute path to the file containing model parameters.\n" +
+            "\t--device: Device to run inference on (`best`, `cpu:{num_threads}` or `gpu:{gpu_index}`). Default: automatically selects best device.\n" +
+            "\t--sensitivities: Sensitivities for detecting keywords. Each value should be a number within [0, 1]. A higher \n" +
+            "\t\tsensitivity results in fewer misses at the cost of increasing the false alarm rate. If not set 0.5 will be used.\n" +
+            "\t--show_inference_devices: Print devices that are available to run Porcupine inference.\n";
     }
 }

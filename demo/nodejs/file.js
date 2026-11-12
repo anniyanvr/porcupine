@@ -1,6 +1,6 @@
 #! /usr/bin/env node
 //
-// Copyright 2020 Picovoice Inc.
+// Copyright 2020-2025 Picovoice Inc.
 //
 // You may not use this file except in compliance with the license. A copy of the license is located in the "LICENSE"
 // file accompanying this source.
@@ -15,22 +15,22 @@ const { program } = require("commander");
 const fs = require("fs");
 
 const WaveFile = require("wavefile").WaveFile;
-const Porcupine = require("@picovoice/porcupine-node");
 const {
+  Porcupine,
+  BuiltinKeyword,
+  getBuiltinKeywordPath,
   getInt16Frames,
   checkWaveFile,
-} = require("@picovoice/porcupine-node/wave_util");
-
-const {
-  BUILTIN_KEYWORDS_STRINGS,
-  BUILTIN_KEYWORDS_STRING_TO_ENUM,
-  getBuiltinKeywordPath,
-} = require("@picovoice/porcupine-node/builtin_keywords");
+} = require("@picovoice/porcupine-node");
 
 program
-  .requiredOption(
+  .option(
     "-i, --input_audio_file_path <string>",
     "input audio wave file in 16-bit 16KHz linear PCM format (mono)"
+  )
+  .option(
+    "-a, --access_key <string>",
+    "AccessKey obtain from the Picovoice Console (https://console.picovoice.ai/)"
   )
   .option(
     "-k, --keyword_file_paths <string>",
@@ -38,7 +38,7 @@ program
   )
   .option(
     "-b, --keywords <string>",
-    `built in keyword(s) (${Array.from(BUILTIN_KEYWORDS_STRINGS)})`
+    `built in keyword(s) (${Object.keys(BuiltinKeyword)})`
   )
   .option(
     "-l, --library_file_path <string>",
@@ -46,11 +46,17 @@ program
   )
   .option("-m, --model_file_path <string>", "absolute path to porcupine model")
   .option(
+    "-y, --device <string>",
+    "Device to run inference on (`best`, `cpu:{num_threads}` or `gpu:{gpu_index}`). Default: selects best device")
+  .option(
     "-s, --sensitivity <number>",
     "sensitivity value between 0 and 1",
     parseFloat,
-    0.5
-  );
+    0.5)
+  .option(
+    "-z, --show_inference_devices",
+    "Print devices that are available to run Porcupine inference.",
+    false);
 
 if (process.argv.length < 3) {
   program.help();
@@ -63,14 +69,29 @@ function frameIndexToSeconds(frameIndex, engineInstance) {
 
 function fileDemo() {
   let audioPath = program["input_audio_file_path"];
+  let accessKey = program["access_key"]
   let keywordPaths = program["keyword_file_paths"];
   let keywords = program["keywords"];
   let libraryFilePath = program["library_file_path"];
   let modelFilePath = program["model_file_path"];
+  let device = program["device"];
   let sensitivity = program["sensitivity"];
 
   let keywordPathsDefined = keywordPaths !== undefined;
   let builtinKeywordsDefined = keywords !== undefined;
+
+  const showInferenceDevices = program["show_inference_devices"];
+  if (showInferenceDevices) {
+    console.log(Porcupine.listAvailableDevices().join('\n'));
+    process.exit();
+  }
+
+  if (accessKey === undefined || audioPath === undefined) {
+    console.error(
+      "`--access_key` and `--input_audio_file_path` are required arguments"
+    );
+    return;
+  }
 
   if (
     (keywordPathsDefined && builtinKeywordsDefined) ||
@@ -85,11 +106,11 @@ function fileDemo() {
   if (builtinKeywordsDefined) {
     keywordPaths = [];
     for (let builtinKeyword of keywords.split(",")) {
-      let keywordString = builtinKeyword.trim().toLowerCase();
-      if (BUILTIN_KEYWORDS_STRINGS.has(keywordString)) {
+      let keywordString = builtinKeyword.trim().toUpperCase();
+      if (keywordString in BuiltinKeyword) {
         keywordPaths.push(
           getBuiltinKeywordPath(
-            BUILTIN_KEYWORDS_STRING_TO_ENUM.get(keywordString)
+            BuiltinKeyword[keywordString]
           )
         );
       } else {
@@ -108,7 +129,7 @@ function fileDemo() {
 
   // get the 'friendly' name of the keyword instead of showing index '0','1','2', etc.
   for (let keywordPath of keywordPaths) {
-    if (keywordPathsDefined && BUILTIN_KEYWORDS_STRINGS.has(keywordPath)) {
+    if (keywordPathsDefined && keywordPath in BuiltinKeyword) {
       console.warn(
         `--keyword_path argument '${keywordPath}' matches a built-in keyword. Did you mean to use --keywords ?`
       );
@@ -139,10 +160,14 @@ function fileDemo() {
   let engineInstance;
   try {
     engineInstance = new Porcupine(
+      accessKey,
       keywordPaths,
       sensitivities,
-      modelFilePath,
-      libraryFilePath
+      {
+        modelPath: modelFilePath,
+        device: device,
+        libraryPath: libraryFilePath
+      }
     );
   } catch (error) {
     console.error(`Error initializing Porcupine engine: ${error}`);

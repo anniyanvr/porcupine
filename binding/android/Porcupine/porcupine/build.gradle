@@ -1,9 +1,8 @@
 apply plugin: 'com.android.library'
-apply plugin: 'com.github.dcendents.android-maven'
 
 ext {
     PUBLISH_GROUP_ID = 'ai.picovoice'
-    PUBLISH_VERSION = '1.9.5'
+    PUBLISH_VERSION = '4.0.2'
     PUBLISH_ARTIFACT_ID = 'porcupine-android'
 }
 
@@ -11,7 +10,7 @@ android {
     compileSdkVersion defaultTargetSdkVersion
 
     defaultConfig {
-        minSdkVersion 16
+        minSdkVersion 21
         targetSdkVersion defaultTargetSdkVersion
         versionCode 1
         versionName "1.0"
@@ -25,10 +24,54 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
 }
 
-apply from: "${rootDir}/publish-mavencentral.gradle"
+if (file("${rootDir}/publish-mavencentral.gradle").exists()) {
+    apply from: "${rootDir}/publish-mavencentral.gradle"
+}
 
 dependencies {
-    implementation fileTree(dir: "libs", include: ["*.jar"])
+    implementation "ai.picovoice:android-voice-processor:1.0.2"
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 }
+
+task copyLibs(type: Copy) {
+    from("${rootDir}/../../../lib/android")
+    into("${rootDir}/porcupine/src/main/jniLibs")
+}
+
+task copyParams(type: Copy) {
+    from("${rootDir}/../../../lib/common")
+    include('porcupine_params.pv')
+    into("${rootDir}/porcupine/src/main/res/raw")
+}
+
+task copyModels(type: Copy) {
+    from("${rootDir}/../../../resources/keyword_files/android")
+    include('alexa_android.ppn',
+        'americano_android.ppn',
+        'blueberry_android.ppn',
+        'bumblebee_android.ppn',
+        'computer_android.ppn',
+        'grapefruit_android.ppn',
+        'grasshopper_android.ppn',
+        'hey google_android.ppn',
+        'hey siri_android.ppn',
+        'jarvis_android.ppn',
+        'ok google_android.ppn',
+        'picovoice_android.ppn',
+        'porcupine_android.ppn',
+        'terminator_android.ppn')
+    into("${rootDir}/porcupine/src/main/res/raw")
+    rename { String fileName ->
+        fileName.replace("_android", "").replace(" ", "_")
+    }
+}
+
+preBuild.dependsOn(copyLibs)
+preBuild.dependsOn(copyParams)
+preBuild.dependsOn(copyModels)

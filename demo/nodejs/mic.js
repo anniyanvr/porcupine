@@ -1,6 +1,6 @@
 #! /usr/bin/env node
 //
-// Copyright 2020 Picovoice Inc.
+// Copyright 2020-2025 Picovoice Inc.
 //
 // You may not use this file except in compliance with the license. A copy of the license is located in the "LICENSE"
 // file accompanying this source.
@@ -12,31 +12,25 @@
 "use strict";
 
 const { program } = require("commander");
-const Porcupine = require("@picovoice/porcupine-node");
-const { getPlatform } = require("@picovoice/porcupine-node/platforms");
-
 const {
-  BUILTIN_KEYWORDS_STRINGS,
-  BUILTIN_KEYWORDS_STRING_TO_ENUM,
+  Porcupine,
+  BuiltinKeyword,
   getBuiltinKeywordPath,
-} = require("@picovoice/porcupine-node/builtin_keywords");
-
-const PLATFORM_RECORDER_MAP = new Map();
-PLATFORM_RECORDER_MAP.set("linux", "arecord");
-PLATFORM_RECORDER_MAP.set("mac", "sox");
-PLATFORM_RECORDER_MAP.set("raspberry-pi", "arecord");
-PLATFORM_RECORDER_MAP.set("windows", "sox");
-
-const recorder = require("node-record-lpcm16");
+} = require("@picovoice/porcupine-node");
+const { PvRecorder } = require("@picovoice/pvrecorder-node");
 
 program
+  .option(
+    "-a, --access_key <string>",
+    "AccessKey obtain from the Picovoice Console (https://console.picovoice.ai/)"
+  )
   .option(
     "-k, --keyword_file_paths <string>",
     "absolute path(s) to porcupine keyword files (.ppn)"
   )
   .option(
     "-b, --keywords <string>",
-    `built in keyword(s) (${Array.from(BUILTIN_KEYWORDS_STRINGS)})`
+    `built in keyword(s) (${Object.keys(BuiltinKeyword)})`
   )
   .option(
     "-l, --library_file_path <string>",
@@ -44,32 +38,68 @@ program
   )
   .option("-m, --model_file_path <string>", "absolute path to porcupine model")
   .option(
+    "-y, --device <string>",
+    "Device to run inference on (`best`, `cpu:{num_threads}` or `gpu:{gpu_index}`). Default: selects best device")
+  .option(
     "-s, --sensitivity <number>",
     "sensitivity value between 0 and 1",
     parseFloat,
     0.5
-  );
+  ).option(
+      "-i, --audio_device_index <number>",
+      "index of audio device to use to record audio",
+      Number,
+      -1
+  ).option(
+      "-d, --show_audio_devices",
+      "show the list of available devices",
+      false
+  ).option(
+      "-z, --show_inference_devices",
+      "Print devices that are available to run Porcupine inference.",
+      false);
 
 if (process.argv.length < 3) {
   program.help();
 }
 program.parse(process.argv);
 
-function chunkArray(array, size) {
-  return Array.from({ length: Math.ceil(array.length / size) }, (v, index) =>
-    array.slice(index * size, index * size + size)
-  );
-}
+let isInterrupted = false;
 
-function micDemo() {
+async function micDemo() {
+  let accessKey = program["access_key"]
   let keywordPaths = program["keyword_file_paths"];
   let keywords = program["keywords"];
   let libraryFilePath = program["library_file_path"];
   let modelFilePath = program["model_file_path"];
+  let device = program["device"];
   let sensitivity = program["sensitivity"];
+  let audioDeviceIndex = program["audio_device_index"];
+  let showAudioDevices = program["show_audio_devices"];
 
   let keywordPathsDefined = keywordPaths !== undefined;
   let builtinKeywordsDefined = keywords !== undefined;
+
+  const showInferenceDevices = program["show_inference_devices"];
+  if (showInferenceDevices) {
+    console.log(Porcupine.listAvailableDevices().join('\n'));
+    process.exit();
+  }
+
+  if (showAudioDevices) {
+      const devices = PvRecorder.getAvailableDevices();
+      for (let i = 0; i < devices.length; i++) {
+          console.log(`index: ${i}, device name: ${devices[i]}`);
+      }
+      process.exit();
+  }
+
+  if (accessKey === undefined) {
+    console.error(
+      "`--access_key` is a required argument"
+    );
+    return;
+  }
 
   if (
     (keywordPathsDefined && builtinKeywordsDefined) ||
@@ -84,11 +114,11 @@ function micDemo() {
   if (builtinKeywordsDefined) {
     keywordPaths = [];
     for (let builtinKeyword of keywords.split(",")) {
-      let keywordString = builtinKeyword.trim().toLowerCase();
-      if (BUILTIN_KEYWORDS_STRINGS.has(keywordString)) {
+      let keywordString = builtinKeyword.trim().toUpperCase();
+      if (keywordString in BuiltinKeyword) {
         keywordPaths.push(
           getBuiltinKeywordPath(
-            BUILTIN_KEYWORDS_STRING_TO_ENUM.get(keywordString)
+            BuiltinKeyword[keywordString]
           )
         );
       } else {
@@ -107,7 +137,7 @@ function micDemo() {
 
   // get the 'friendly' name of the keyword instead of showing index '0','1','2', etc.
   for (let keywordPath of keywordPaths) {
-    if (keywordPathsDefined && BUILTIN_KEYWORDS_STRINGS.has(keywordPath)) {
+    if (keywordPathsDefined && keywordPath in BuiltinKeyword) {
       console.warn(
         `--keyword_path argument '${keywordPath}' matches a built-in keyword. Did you mean to use --keywords ?`
       );
@@ -131,68 +161,47 @@ function micDemo() {
   }
 
   let handle = new Porcupine(
+    accessKey,
     keywordPaths,
     sensitivities,
-    modelFilePath,
-    libraryFilePath
-  );
-
-  let platform;
-  try {
-    platform = getPlatform();
-  } catch (error) {
-    console.error();
-    ("The NodeJS binding does not support this platform. Supported platforms include macOS (x86_64), Windows (x86_64), Linux (x86_64), and Raspberry Pi (1-4)");
-    console.error(error);
-  }
-
-  let recorderType = PLATFORM_RECORDER_MAP.get(platform);
-  console.log(
-    `Platform: '${platform}'; attempting to use '${recorderType}' to access microphone ...`
+    {
+      modelPath: modelFilePath,
+      device: device,
+      libraryPath: libraryFilePath
+    }
   );
 
   const frameLength = handle.frameLength;
-  const sampleRate = handle.sampleRate;
 
-  const recording = recorder.record({
-    sampleRate: sampleRate,
-    channels: 1,
-    audioType: "raw",
-    recorder: recorderType,
-  });
+  const recorder = new PvRecorder(frameLength, audioDeviceIndex);
+  recorder.start();
 
-  var frameAccumulator = [];
+  console.log(`Using device: ${recorder.getSelectedDevice()}...`);
 
-  recording.stream().on("data", (data) => {
-    // Two bytes per Int16 from the data buffer
-    let newFrames16 = new Array(data.length / 2);
-    for (let i = 0; i < data.length; i += 2) {
-      newFrames16[i / 2] = data.readInt16LE(i);
-    }
+  console.log(`Listening for wake word(s): ${keywordNames}`);
+  console.log("Press ctrl+c to exit.")
 
-    // Split the incoming PCM integer data into arrays of size Porcupine.frameLength. If there's insufficient frames, or a remainder,
-    // store it in 'frameAccumulator' for the next iteration, so that we don't miss any audio data
-    frameAccumulator = frameAccumulator.concat(newFrames16);
-    let frames = chunkArray(frameAccumulator, frameLength);
-
-    if (frames[frames.length - 1].length !== frameLength) {
-      // store remainder from divisions of frameLength
-      frameAccumulator = frames.pop();
-    } else {
-      frameAccumulator = [];
-    }
-
-    for (let frame of frames) {
-      let index = handle.process(frame);
+  while (!isInterrupted) {
+      const pcm = await recorder.read();
+      let index = handle.process(pcm);
       if (index !== -1) {
         console.log(`Detected '${keywordNames[index]}'`);
       }
-    }
-  });
+  }
 
-  console.log(`Listening for wake word(s): ${keywordNames}`);
-  process.stdin.resume();
-  console.warn("Press ctrl+c to exit.");
+  console.log("Stopping...");
+  recorder.release();
 }
 
-micDemo();
+// setup interrupt
+process.on("SIGINT", function () {
+    isInterrupted = true;
+});
+
+(async function () {
+    try {
+        await micDemo();
+    } catch (e) {
+        console.error(e.toString());
+    }
+})();

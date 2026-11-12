@@ -1,4 +1,5 @@
 plugins {
+    id 'checkstyle'
     id 'java'
     id 'java-library'
     id 'maven-publish'
@@ -7,8 +8,13 @@ plugins {
 
 ext {
     PUBLISH_GROUP_ID = 'ai.picovoice'
-    PUBLISH_VERSION = '1.9.2'
+    PUBLISH_VERSION = '4.0.2'
     PUBLISH_ARTIFACT_ID = 'porcupine-java'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
 }
 
 repositories {
@@ -86,6 +92,24 @@ task copyWindowsKeywordResources(type: Copy) {
             'terminator_windows.ppn')
     into("${outputDir}/porcupine/resources/keyword_files/windows/")
 }
+task copyRPiKeywordResources(type: Copy) {
+    from('../../resources/keyword_files/raspberry-pi')
+    include('alexa_raspberry-pi.ppn',
+            'americano_raspberry-pi.ppn',
+            'blueberry_raspberry-pi.ppn',
+            'bumblebee_raspberry-pi.ppn',
+            'computer_raspberry-pi.ppn',
+            'grapefruit_raspberry-pi.ppn',
+            'grasshopper_raspberry-pi.ppn',
+            'hey google_raspberry-pi.ppn',
+            'hey siri_raspberry-pi.ppn',
+            'jarvis_raspberry-pi.ppn',
+            'ok google_raspberry-pi.ppn',
+            'picovoice_raspberry-pi.ppn',
+            'porcupine_raspberry-pi.ppn',
+            'terminator_raspberry-pi.ppn')
+    into("${outputDir}/porcupine/resources/keyword_files/raspberry-pi/")
+}
 
 task copyDefaultModel(type: Copy) {
     from('../../lib/common/porcupine_params.pv') into "${outputDir}/porcupine/lib/common/"
@@ -94,20 +118,48 @@ task copyLinuxLib(type: Copy) {
     from('../../lib/java/linux/x86_64/libpv_porcupine_jni.so') into "${outputDir}/porcupine/lib/java/linux/x86_64/"
 }
 task copyMacLib(type: Copy) {
-    from('../../lib/java/mac/x86_64/libpv_porcupine_jni.dylib') into "${outputDir}/porcupine/lib/java/mac/x86_64/"
+    from('../../lib/java/mac/')
+    include('x86_64/libpv_porcupine_jni.dylib',
+            'arm64/libpv_porcupine_jni.dylib')
+    into "${outputDir}/porcupine/lib/java/mac/"
 }
 task copyWindowsLib(type: Copy) {
-    from('../../lib/java/windows/amd64/pv_porcupine_jni.dll') into "${outputDir}/porcupine/lib/java/windows/amd64/"
+    from('../../lib/java/windows/')
+    include('amd64/pv_porcupine_jni.dll',
+            'amd64/pv_ypu_impl_cuda_porcupine.dll',
+            'arm64/pv_porcupine_jni.dll')
+    into "${outputDir}/porcupine/lib/java/windows/"
+}
+task copyRPiLib(type: Copy) {
+    from('../../lib/java/raspberry-pi/')
+    include('cortex-a7/libpv_porcupine_jni.so',
+            'cortex-a53/libpv_porcupine_jni.so',
+            'cortex-a53-aarch64/libpv_porcupine_jni.so',
+            'cortex-a72/libpv_porcupine_jni.so',
+            'cortex-a72-aarch64/libpv_porcupine_jni.so',
+            'cortex-a76/libpv_porcupine_jni.so',
+            'cortex-a76-aarch64/libpv_porcupine_jni.so')
+    into("${outputDir}/porcupine/lib/java/raspberry-pi/")
 }
 
-assemble {
-    dependsOn 'copyLinuxKeywordResources'
-    dependsOn 'copyMacKeywordResources'
-    dependsOn 'copyWindowsKeywordResources'
-    dependsOn 'copyDefaultModel'
-    dependsOn 'copyLinuxLib'
-    dependsOn 'copyMacLib'
-    dependsOn 'copyWindowsLib'
+task copyTasks(type: GradleBuild) {
+    tasks = ['copyLinuxKeywordResources',
+             'copyMacKeywordResources',
+             'copyWindowsKeywordResources',
+             'copyRPiKeywordResources',
+             'copyDefaultModel',
+             'copyLinuxLib',
+             'copyMacLib',
+             'copyWindowsLib',
+             'copyRPiLib']
+}
+
+jar {
+    dependsOn 'copyTasks'
+}
+
+javadoc {
+    dependsOn 'copyTasks'
 }
 
 if (file("${rootDir}/publish-mavencentral.gradle").exists()) {
@@ -115,9 +167,22 @@ if (file("${rootDir}/publish-mavencentral.gradle").exists()) {
 }
 
 dependencies {
+    testImplementation 'com.google.code.gson:gson:2.10.1'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.4.2'
+    testImplementation 'org.junit.jupiter:junit-jupiter-params:5.8.2'
+}
+
+compileTestJava {
+    dependsOn 'assemble'
 }
 
 test {
+    systemProperty 'pvTestingAccessKey', System.getProperty('pvTestingAccessKey')
+    systemProperty 'pvTestingDevice', System.getProperty('pvTestingDevice')
+    systemProperty 'numTestIterations', System.getProperty('numTestIterations')
+    systemProperty 'performanceThresholdSec', System.getProperty('performanceThresholdSec')
     useJUnitPlatform()
 }
+
+compileJava.options.encoding = "UTF-8"
+compileTestJava.options.encoding = "UTF-8"

@@ -13,21 +13,24 @@ applications. It is
 - using deep neural networks trained in real-world environments.
 - compact and computationally-efficient making it perfect for IoT.
 - scalable. It can detect multiple always-listening voice commands with no added CPU/memory footprint.
-- self-service. Developers can train custom wake phrases using [Picovoice Console](https://picovoice.ai/console/).
+- self-service. Developers can train custom wake phrases using [Picovoice Console](https://console.picovoice.ai/).
 
 ## Compatibility
 
-- Python 3
-- Runs on Linux (x86_64), Mac (x86_64), Windows (x86_64), Raspberry Pi (all variants), NVIDIA Jetson (Nano), and BeagleBone.
+- Python 3.9+
+- Runs on Linux (x86_64), Mac (x86_64 and arm64), Windows (x86_64, arm64), and Raspberry Pi (Zero, 3, 4, 5).
 
 ## Installation
-
-Microphone demo uses [PyAudio](https://people.csail.mit.edu/hubert/pyaudio/) for recording input audio. Consult the
-installation guide at [PyAudio](https://people.csail.mit.edu/hubert/pyaudio/).
 
 ```console
 sudo pip3 install pvporcupinedemo
 ```
+
+## AccessKey
+
+Porcupine requires a valid Picovoice `AccessKey` at initialization. `AccessKey` acts as your credentials when using Porcupine SDKs.
+You can get your `AccessKey` for free. Make sure to keep your `AccessKey` secret.
+Signup or Login to [Picovoice Console](https://console.picovoice.ai/) to get your `AccessKey`.
 
 ## Usage
 
@@ -37,7 +40,7 @@ It opens an audio stream from a microphone and detects utterances of a given wak
 microphone and detects occurrences of "Picovoice".
 
 ```console
-porcupine_demo_mic --keywords picovoice
+porcupine_demo_mic --access_key ${ACCESS_KEY} --keywords picovoice
 ```
 
 `keywords` is a shorthand for using default keyword files shipped with the package. The list of default keyword files
@@ -50,27 +53,27 @@ porcupine_demo_mic --help
 To detect multiple phrases concurrently provide them as separate arguments
 
 ```console
-porcupine_demo_mic --keywords picovoice porcupine
+porcupine_demo_mic --access_key ${ACCESS_KEY} --keywords picovoice porcupine
 ```
 
-To detect non-default keywords (e.g. models created using [Picovoice Console](https://picovoice.ai/console/))
+To detect non-default keywords (e.g. models created using [Picovoice Console](https://console.picovoice.ai/))
 use `keyword_paths` argument
 
 ```console
-porcupine_demo_mic --keyword_paths ${KEYWORD_PATH_ONE} ${KEYWORD_PATH_TWO}
+porcupine_demo_mic --access_key ${ACCESS_KEY} --keyword_paths ${KEYWORD_PATH_ONE} ${KEYWORD_PATH_TWO}
 ```
 
 To detect non-English keywords provide the respective model path:
 
 ```console
-porcupine_demo_mic --model_path ${NON_ENGLISH_MODEL_PATH} --keyword_paths ${NON_ENGLISH_KEYWORD_PATH} 
+porcupine_demo_mic --access_key ${ACCESS_KEY} --model_path ${NON_ENGLISH_MODEL_PATH} --keyword_paths ${NON_ENGLISH_KEYWORD_PATH}
 ```
 
 The model files for all supported languages are available 
 [here](https://github.com/Picovoice/porcupine/tree/master/lib/common) on Porcupine's GitHub repository.
 
-It is possible that the default audio input device recognized by PyAudio is not the one being used. There are a couple
-of debugging facilities baked into the demo application to solve this. First, type the following into the console
+It is possible that the default audio input device recognized by the demo is not the one being used. There are a couple of
+debugging facilities baked into the demo application to solve this. First, type the following into the console:
 
 ```console
 porcupine_demo_mic --show_audio_devices
@@ -79,41 +82,21 @@ porcupine_demo_mic --show_audio_devices
 It provides information about various audio input devices on the box. On a Linux box, this is the console output
 
 ```
-'index': '0', 'name': 'HDA Intel PCH: ALC892 Analog (hw:0,0)', 'defaultSampleRate': '44100.0', 'maxInputChannels': '2'
-'index': '1', 'name': 'HDA Intel PCH: ALC892 Alt Analog (hw:0,2)', 'defaultSampleRate': '44100.0', 'maxInputChannels': '2'
-'index': '2', 'name': 'HDA NVidia: HDMI 0 (hw:1,3)', 'defaultSampleRate': '44100.0', 'maxInputChannels': '0'
-'index': '3', 'name': 'HDA NVidia: HDMI 1 (hw:1,7)', 'defaultSampleRate': '44100.0', 'maxInputChannels': '0'
-'index': '4', 'name': 'HDA NVidia: HDMI 2 (hw:1,8)', 'defaultSampleRate': '44100.0', 'maxInputChannels': '0'
-'index': '5', 'name': 'HDA NVidia: HDMI 3 (hw:1,9)', 'defaultSampleRate': '44100.0', 'maxInputChannels': '0'
-'index': '6', 'name': 'HDA NVidia: HDMI 0 (hw:2,3)', 'defaultSampleRate': '44100.0', 'maxInputChannels': '0'
-'index': '7', 'name': 'HDA NVidia: HDMI 1 (hw:2,7)', 'defaultSampleRate': '44100.0', 'maxInputChannels': '0'
-'index': '8', 'name': 'HDA NVidia: HDMI 2 (hw:2,8)', 'defaultSampleRate': '44100.0', 'maxInputChannels': '0'
-'index': '9', 'name': 'HDA NVidia: HDMI 3 (hw:2,9)', 'defaultSampleRate': '44100.0', 'maxInputChannels': '0'
-'index': '10', 'name': 'Logitech USB Headset: Audio (hw:3,0)', 'defaultSampleRate': '44100.0', 'maxInputChannels': '1'
-'index': '11', 'name': 'sysdefault', 'defaultSampleRate': '48000.0', 'maxInputChannels': '128'
-'index': '12', 'name': 'front', 'defaultSampleRate': '44100.0', 'maxInputChannels': '0'
-'index': '13', 'name': 'surround21', 'defaultSampleRate': '44100.0', 'maxInputChannels': '0'
-'index': '14', 'name': 'surround40', 'defaultSampleRate': '44100.0', 'maxInputChannels': '0'
-'index': '15', 'name': 'surround41', 'defaultSampleRate': '44100.0', 'maxInputChannels': '0'
-'index': '16', 'name': 'surround50', 'defaultSampleRate': '44100.0', 'maxInputChannels': '0'
-'index': '17', 'name': 'surround51', 'defaultSampleRate': '44100.0', 'maxInputChannels': '0'
-'index': '18', 'name': 'surround71', 'defaultSampleRate': '44100.0', 'maxInputChannels': '0'
-'index': '19', 'name': 'pulse', 'defaultSampleRate': '44100.0', 'maxInputChannels': '32'
-'index': '20', 'name': 'dmix', 'defaultSampleRate': '48000.0', 'maxInputChannels': '0'
-'index': '21', 'name': 'default', 'defaultSampleRate': '44100.0', 'maxInputChannels': '32'
+index: 0, device name: USB Audio Device
+index: 1, device name: MacBook Air Microphone
 ``` 
 
-It can be seen that the last device (index 21) is considered default. But on this machine, a headset is being used as 
-the input device which has an index of 10. After finding the correct index the demo application can be invoked as below
+You can use the device index to specify which microphone to use for the demo. For instance, if you want to use the USB Audio Device 
+in the above example, you can invoke the demo application as below:
 
 ```console
-porcupine_demo_mic --keywords picovoice --audio_device_index 10
+porcupine_demo_mic --access_key ${ACCESS_KEY} --keywords picovoice --audio_device_index 0
 ```
 
 If the problem persists we suggest storing the recorded audio into a file for inspection. This can be achieved by
 
 ```console
-porcupine_demo_mic --keywords picovoice --audio_device_index 10 --output_path ~/test.wav
+porcupine_demo_mic --access_key ${ACCESS_KEY} --keywords picovoice --audio_device_index 0 --output_path ~/test.wav
 ```
 
 If after listening to stored file there is no apparent problem detected please open an issue.
@@ -126,7 +109,7 @@ provided it only processes the first (left) channel. The following processes a f
 "Picovoice"
 
 ```console
-porcupine_demo_file --input_audio_path ${AUDIO_PATH} --keywords picovoice
+porcupine_demo_file --access_key ${ACCESS_KEY} --wav_path ${AUDIO_PATH} --keywords picovoice
 ```
 
 `keywords` is a shorthand for using default keyword files shipped with the package. The list of default keyword files
@@ -139,21 +122,23 @@ porcupine_demo_file --help
 To detect multiple phrases concurrently provide them as separate arguments
 
 ```console
-porcupine_demo_file --input_audio_path ${AUDIO_PATH} --keywords grasshopper porcupine
+porcupine_demo_file --access_key ${ACCESS_KEY} --wav_path ${AUDIO_PATH} --keywords grasshopper porcupine
 ```
 
-To detect non-default keywords (e.g. models created using [Picovoice Console](https://picovoice.ai/console/))
+To detect non-default keywords (e.g. models created using [Picovoice Console](https://console.picovoice.ai/))
 use `keyword_paths` argument
 
 ```console
-porcupine_demo_file --input_audio_path ${AUDIO_PATH} \
+porcupine_demo_file --access_key ${ACCESS_KEY} \
+--wav_path ${AUDIO_PATH} \
 --keyword_paths ${KEYWORD_PATH_ONE} ${KEYWORD_PATH_TWO}
 ```
 
 To detect non-English keywords provide the respective model path:
 
 ```console
-porcupine_demo_mic --input_audio_path ${AUDIO_PATH} \
+porcupine_demo_mic --access_key ${ACCESS_KEY} \
+--wav_path ${AUDIO_PATH} \
 --model_path ${NON_ENGLISH_MODEL_PATH} \
 --keyword_paths ${NON_ENGLISH_KEYWORD_PATH} 
 ```
@@ -164,7 +149,8 @@ The model files for all supported languages are available
 The sensitivity of the engine can be tuned per keyword using the `sensitivities` input argument
 
 ```console
-porcupine_demo_file --input_audio_path ${AUDIO_PATH} \
+porcupine_demo_file --access_key ${ACCESS_KEY} \
+--wav_path ${AUDIO_PATH} \
 --keywords grasshopper porcupine --sensitivities 0.3 0.6
 ```
 

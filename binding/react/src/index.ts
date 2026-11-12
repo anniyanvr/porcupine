@@ -1,1 +1,5 @@
-export { usePorcupine } from './usePorcupine';
+import { usePorcupine } from './use_porcupine';
+
+export {
+  usePorcupine
+};

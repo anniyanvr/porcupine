@@ -2,12 +2,11 @@ buildscript {
 
   repositories {
     google()
-    jcenter()
     mavenCentral()
   }
 
   dependencies {
-    classpath 'com.android.tools.build:gradle:3.2.1'
+    classpath 'com.android.tools.build:gradle:7.4.2'
   }
 }
 
@@ -22,16 +21,27 @@ def getExtOrIntegerDefault(name) {
 }
 
 android {
+  def agpVersion = com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION
+  if (agpVersion.tokenize('.')[0].toInteger() >= 7) {
+      namespace "ai.picovoice.reactnative.porcupine"
+  }
+
+  if (agpVersion.tokenize('.')[0].toInteger() >= 8) {
+      buildFeatures {
+          buildConfig = true
+      }
+  }
+
   compileSdkVersion getExtOrIntegerDefault('compileSdkVersion')
   buildToolsVersion getExtOrDefault('buildToolsVersion')
   defaultConfig {
-    minSdkVersion 16
+    minSdkVersion 24
     targetSdkVersion getExtOrIntegerDefault('targetSdkVersion')
     versionCode 1
     versionName "1.0"
-    
+
   }
-  
+
   buildTypes {
     release {
       minifyEnabled false
@@ -48,7 +58,6 @@ android {
 
 repositories {
   mavenCentral()
-  jcenter()
   google()
 
   def found = false
@@ -120,5 +129,5 @@ repositories {
 dependencies {
   // noinspection GradleDynamicVersion
   api 'com.facebook.react:react-native:+'
-  implementation 'ai.picovoice:porcupine-android:1.9.2'
+  implementation 'ai.picovoice:porcupine-android:4.0.0'
 }

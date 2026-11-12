@@ -1,84 +1,134 @@
-import { useEffect, useState } from "react";
-import { usePorcupine } from "@picovoice/porcupine-web-react";
-import { PorcupineWorkerFactory } from "@picovoice/porcupine-web-en-worker";
+import React, {useEffect, useState, useCallback, useRef} from "react";
+
+import {BuiltInKeyword, PorcupineKeyword} from "@picovoice/porcupine-web";
+import {usePorcupine} from "@picovoice/porcupine-react";
+
+import porcupineModel from "./lib/porcupineModel";
+import porcupineKeywords from "./lib/porcupineKeywords";
+
+if (porcupineKeywords.length === 0 && porcupineModel.publicPath.endsWith("porcupine_params.pv")) {
+  for (const k in BuiltInKeyword) {
+    // @ts-ignore
+    porcupineKeywords.push({builtin: k});
+  }
+}
 
 export default function VoiceWidget() {
   const [keywordDetections, setKeywordDetections] = useState<string[]>([]);
-  const [workerChunk, setWorkerChunk] = useState<
-    Record<string, PorcupineWorkerFactory | null>
-  >({ factory: null });
-  const [isChunkLoaded, setIsChunkLoaded] = useState(false);
-  const [keywords] = useState([
-    { builtin: "Alexa", sensitivity: 0.7 },
-    "Picovoice",
-  ]);
+  const [keyword, setKeyword] = useState<PorcupineKeyword>(porcupineKeywords[0]);
+
+  const accessKeyRef = useRef("")
+
+  const {
+    keywordDetection,
+    isLoaded,
+    isListening,
+    error,
+    init,
+    start,
+    stop,
+    release
+  } = usePorcupine();
+
+  const initEngine = useCallback(async () => {
+    if (accessKeyRef.current.length === 0) {
+      return;
+    }
+
+    await init(
+      accessKeyRef.current,
+      [keyword],
+      porcupineModel
+    );
+  }, [init, keyword])
+
+  const setSelectedKeyword = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selected = e.target.value;
+    for (const k of porcupineKeywords) {
+      if (k.label === selected || k.builtin === selected) {
+        setKeyword(k);
+        return;
+      }
+    }
+  }
 
   useEffect(() => {
-    if (workerChunk.factory === null) {
-      let isCanceled = false;
-      const loadPorcupine = async () => {
-        // Dynamically import the worker
-        const ppnEnFactory = (
-          await import("@picovoice/porcupine-web-en-worker")
-        ).PorcupineWorkerFactory;
-        console.log("Porcupine worker (EN) chunk is loaded.");
-
-        if (!isCanceled) {
-          setWorkerChunk({ factory: ppnEnFactory });
-          setIsChunkLoaded(true);
-        }
-      };
-
-      loadPorcupine();
-
-      return () => {
-        isCanceled = true;
-      };
+    const changeKeyword = async () => {
+      await release();
+      await initEngine();
     }
-  }, [workerChunk]);
 
-  const keywordEventHandler = (porcupineKeywordLabel: string) => {
-    setKeywordDetections((x) => [...x, porcupineKeywordLabel]);
-  };
+    changeKeyword();
+  }, [initEngine, release])
 
-  const { isLoaded, isListening, isError, errorMessage, start, resume, pause } =
-    usePorcupine(
-      PorcupineWorkerFactory,
-      { keywords, start: true },
-      keywordEventHandler
-    );
+  useEffect(() => {
+    if (keywordDetection !== null) {
+      setKeywordDetections((oldVal) => [...oldVal, keywordDetection.label])
+    }
+  }, [keywordDetection])
 
   return (
     <div className="voice-widget">
       <h2>VoiceWidget</h2>
-      <h3>Dynamic Import Loaded: {JSON.stringify(isChunkLoaded)}</h3>
-      <h3>Porcupine Loaded: {JSON.stringify(isLoaded)}</h3>
+      <h3>
+        <label>
+          AccessKey obtained from{" "}
+          <a href="https://console.picovoice.ai/">Picovoice Console</a>:{" "}
+          <input
+            type="text"
+            name="accessKey"
+            onChange={(e) => {accessKeyRef.current = e.target.value}}
+          />
+          <button
+            className="init-button"
+            onClick={() => initEngine()}
+          >
+            Init Porcupine
+          </button>
+        </label>
+      </h3>
+      <h3>Loaded: {JSON.stringify(isLoaded)}</h3>
       <h3>Listening: {JSON.stringify(isListening)}</h3>
-      <h3>Error: {JSON.stringify(isError)}</h3>
-      {isError && (
-        <p className="error-message">{JSON.stringify(errorMessage)}</p>
+      <h3>Error: {JSON.stringify(error !== null)}</h3>
+      {error && (
+        <p className="error-message">{error.toString()}</p>
       )}
-      <h3>Keywords: {JSON.stringify(keywords)}</h3>
-      <br />
+      <h3>
+        <label>Keyword: </label>
+        <select
+          value={(keyword as any).label ?? (keyword as any).builtin}
+          onChange={(e) => setSelectedKeyword(e)}
+        >
+          {porcupineKeywords.map(k =>
+            <option
+              key={k.label ?? k.builtin}
+              value={k.label ?? k.builtin}
+            >
+              {k.label ?? k.builtin}
+            </option>
+          )}
+        </select>
+      </h3>
+      <br/>
       <button
         onClick={() => start()}
-        disabled={isError || isListening || !isLoaded}
+        disabled={error !== null || !isLoaded || isListening}
       >
         Start
       </button>
       <button
-        onClick={() => pause()}
-        disabled={isError || !isListening || !isLoaded}
+        onClick={() => stop()}
+        disabled={error !== null ||!isLoaded || !isListening}
       >
-        Pause
+        Stop
       </button>
       <button
-        onClick={() => resume()}
-        disabled={isError || isListening || !isLoaded}
+        onClick={() => release()}
+        disabled={error !== null || !isLoaded}
       >
-        Resume
+        Release
       </button>
-      <h3>Keyword Detections (listening for "Picovoice" and "Alexa"):</h3>
+      <h3>Keyword Detections:</h3>
       {keywordDetections.length > 0 && (
         <ul>
           {keywordDetections.map((label: string, index: number) => (

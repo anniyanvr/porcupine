@@ -26,9 +26,12 @@ with open(os.path.join(os.path.dirname(__file__), 'MANIFEST.in'), 'w') as f:
 with open(os.path.join(os.path.dirname(__file__), 'README.md'), 'r') as f:
     long_description = f.read()
 
+with open(os.path.join(os.path.dirname(__file__), "requirements.txt"), "r") as f:
+    dependencies = f.read().strip().splitlines()
+
 setuptools.setup(
     name="pvporcupinedemo",
-    version="1.9.5",
+    version="4.0.2",
     author="Picovoice",
     author_email="hello@picovoice.ai",
     description="Porcupine wake word engine demos",
@@ -36,7 +39,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/Picovoice/porcupine",
     packages=["pvporcupinedemo"],
-    install_requires=["enum34", "numpy", "pvporcupine==1.9.5", "pyaudio", "soundfile"],
+    install_requires=dependencies,
     include_package_data=True,
     classifiers=[
         "Development Status :: 5 - Production/Stable",
@@ -52,6 +55,6 @@ setuptools.setup(
             'porcupine_demo_mic=pvporcupinedemo.porcupine_demo_mic:main',
         ],
     ),
-    python_requires='>=3',
+    python_requires='>=3.9',
     keywords="wake word engine, hotword detection, keyword spotting, wake word detection, voice commands",
 )

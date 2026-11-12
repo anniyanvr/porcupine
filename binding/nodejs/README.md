@@ -1,4 +1,4 @@
-# Porcupine Binding for NodeJS
+# Porcupine Binding for Node.js
 
 ## Porcupine
 
@@ -17,21 +17,28 @@ To learn more about Porcupine, see the [product](https://picovoice.ai/products/p
 
 ### Custom wake words
 
-Porcupine includes several built-in keywords, which are stored as `.ppn` files. To train custom PPN files, see the [Picovoice Console](https://picovoice.ai/console/).
+Porcupine includes several built-in keywords, which are stored as `.ppn` files. To train custom PPN files, see the [Picovoice Console](https://console.picovoice.ai/).
 
 Unlike the built-in keywords, custom PPN files generated with the Picovoice Console carry restrictions including (but not limited to): training allowance, time limits, available platforms, and commercial usage.
 
 ## Compatibility
 
-This binding is for running Porcupine on **NodeJS 10+** on the following platforms:
+This binding is for running Porcupine on **Node.js 18+** on the following platforms:
 
+- Windows (x86_64, arm64)
 - Linux (x86_64)
-- macOS (x86_64)
-- Raspberry Pi (2,3,4)
+- macOS (x86_64, arm64)
+- Raspberry Pi (3, 4, 5)
 
 ### Web Browsers
 
-This npm package is for NodeJS and **does not work in a browser**. Looking to run Porcupine in-browser? There are npm packages available for [Web](https://www.npmjs.com/package/@picovoice/porcupine-web-en-worker), and dedicated packages for [Angular](https://www.npmjs.com/package/@picovoice/porcupine-web-angular), [React](https://www.npmjs.com/package/@picovoice/porcupine-web-react), and [Vue](https://www.npmjs.com/package/@picovoice/porcupine-web-vue).
+This npm package is for Node.js and **does not work in a browser**. Looking to run Porcupine in-browser? There are npm packages available for [Web](https://www.npmjs.com/package/@picovoice/porcupine-web)<!-- markdown-link-check-disable-line -->, and dedicated package for [React](https://www.npmjs.com/package/@picovoice/porcupine-react)<!-- markdown-link-check-disable-line -->.
+
+## AccessKey
+
+Porcupine requires a valid Picovoice `AccessKey` at initialization. `AccessKey` acts as your credentials when using Porcupine SDKs.
+You can get your `AccessKey` for free. Make sure to keep your `AccessKey` secret.
+Signup or Login to [Picovoice Console](https://console.picovoice.ai/) to get your `AccessKey`.
 
 ## Usage
 
@@ -42,17 +49,20 @@ The binding provides the `Porcupine` class. Create instances of the `Porcupine` 
 The built-in keywords give a quick way to get started. Here we can specify that we want to listen for the wake words "grasshopper" and "bumblebee" with [sensitivities](https://picovoice.ai/docs/faq/porcupine/#what-should-i-set-the-sensitivity-value-to) of 0.5 and 0.65, respectively. Since Porcupine can listen to multiple keywords simultaneously, they are provided as an array argument.
 
 ```javascript
-const Porcupine = require("@picovoice/porcupine-node");
-
 const {
-  GRASSHOPPER,
-  BUMBLEBEE,
-} = require("@picovoice/porcupine-node/builtin_keywords");
+  Porcupine,
+  BuiltinKeyword,
+}= require("@picovoice/porcupine-node");
 
-const handle = new Porcupine([GRASSHOPPER, BUMBLEBEE], [0.5, 0.65]);
+const accessKey = "${ACCESS_KEY}" // Obtained from the Picovoice Console (https://console.picovoice.ai/)
+
+const handle = new Porcupine(
+    accessKey,
+    [BuiltinKeyword.GRASSHOPPER, BuiltinKeyword.BUMBLEBEE],
+    [0.5, 0.65]);
 
 // process a single frame of audio
-// the keywordIndex provies the index of the keyword detected, or -1 if no keyword was detected
+// the keywordIndex provides the index of the keyword detected, or -1 if no keyword was detected
 const keywordIndex = handle.process(frame);
 ```
 
@@ -78,7 +88,12 @@ const keywordIndex = handle.process(frame);
 Providing an array of strings instead of the built-in enums allows you to specify an absolute path to a keyword `.ppn` file:
 
 ```javascript
-const handle = new Porcupine(["/absolute/path/to/your/keyword.ppn"], [0.5]);
+const accessKey = "${ACCESS_KEY}" // Obtained from the Picovoice Console (https://console.picovoice.ai/)
+
+const handle = new Porcupine(
+    accessKey,
+    ["/absolute/path/to/your/keyword.ppn"],
+    [0.5]);
 ```
 
 ### Override model and library paths
@@ -86,7 +101,10 @@ const handle = new Porcupine(["/absolute/path/to/your/keyword.ppn"], [0.5]);
 The Porcupine constructor accepts two optional positional parameters for the absolute paths to the model and dynamic library, should you need to override them (typically, you will not).
 
 ```javascript
+const accessKey = "${ACCESS_KEY}" // Obtained from the Picovoice Console (https://console.picovoice.ai/)
+
 const handle = new Porcupine(
+  accessKey,
   keywordPaths,
   sensitivities,
   modelFilePath,
@@ -98,6 +116,6 @@ const handle = new Porcupine(
 
 ## Unit Tests
 
-Run `yarn` (or`npm install`) from the [binding/nodejs](https://github.com/Picovoice/porcupine/tree/master/binding/nodejs) directory to install project dependencies. This will also run a script to copy all of the necessary shared resources from the Porcupine repository into the package directory.
+Run `yarn` (or`npm install`) from the [binding/nodejs](https://github.com/Picovoice/porcupine/tree/master/binding/nodejs) directory to install project dependencies. This will also run a script to copy all the necessary shared resources from the Porcupine repository into the package directory.
 
 Run `yarn test` (or `npm run test`) from the [binding/nodejs](https://github.com/Picovoice/porcupine/tree/master/binding/nodejs) directory to execute the test suite.

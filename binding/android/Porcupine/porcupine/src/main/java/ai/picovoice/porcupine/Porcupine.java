@@ -1,5 +1,5 @@
 /*
-    Copyright 2021 Picovoice Inc.
+    Copyright 2021-2026 Picovoice Inc.
 
     You may not use this file except in compliance with the license. A copy of the license is
     located in the "LICENSE" file accompanying this source.
@@ -15,14 +15,23 @@ package ai.picovoice.porcupine;
 import android.content.Context;
 import android.content.res.Resources;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
+
+import okhttp3.*;
 
 /**
  * Android binding for Porcupine wake word engine. It detects utterances of given keywords within an
@@ -33,6 +42,15 @@ import java.util.HashMap;
  * audio.
  */
 public class Porcupine {
+    private static final Set<String> VALID_LANGUAGES =
+            new HashSet<>(Arrays.asList("de", "en", "es", "fr", "it", "ja", "ko", "pt"));
+
+    private static final int PORCUPINE_PHRASE_MAX_LENGTH = 64;
+
+    private static final String PV_API_URL = "https://rest.picovoice.ai/";
+
+    private static final OkHttpClient client = new OkHttpClient();
+
 
     private static final int[] KEYWORDS_RESOURCES = {
             R.raw.alexa, R.raw.americano, R.raw.blueberry, R.raw.bumblebee, R.raw.computer, R.raw.grapefruit,
@@ -43,6 +61,7 @@ public class Porcupine {
 
     private static String DEFAULT_MODEL_PATH;
     private static boolean isExtracted;
+    private static String _sdk = "android";
 
     static {
         System.loadLibrary("pv_porcupine");
@@ -50,22 +69,138 @@ public class Porcupine {
 
     private long handle;
 
+    public static void setSdk(String sdk) {
+        Porcupine._sdk = sdk;
+    }
+
+    /**
+     * Trains a wake word model given a phrase.
+     *
+     * @param accessKey AccessKey obtained from Picovoice Console (https://console.picovoice.ai/).
+     * @param outputPath Absolute path to file where the trained model will be saved.
+     * @param language Two character language code for the model (e.g. "en", "fr").
+     *                 See https://picovoice.ai/docs/model-api/porcupine/ for supported languages.
+     * @param phrase Phrase to create a wake word from.
+     * @throws PorcupineException if model training fails.
+     */
+    public static void trainWakeWordFromPhrase(
+            String accessKey,
+            String outputPath,
+            String language,
+            String phrase) throws PorcupineException {
+
+        if (!VALID_LANGUAGES.contains(language)) {
+            throw new PorcupineInvalidArgumentException(
+                    "Invalid language ('" + language + "')"
+            );
+        }
+
+        if (phrase == null || phrase.isEmpty()) {
+            throw new PorcupineInvalidArgumentException("Phrase must not be empty");
+        }
+
+        if (phrase.length() > PORCUPINE_PHRASE_MAX_LENGTH) {
+            throw new PorcupineInvalidArgumentException(
+                    "Phrase must not exceed " + PORCUPINE_PHRASE_MAX_LENGTH + " characters"
+            );
+        }
+
+        String payload;
+
+        try {
+            payload = new JSONObject()
+                    .put("platform", "android")
+                    .put("phrase", phrase)
+                    .toString();
+        } catch (JSONException e) {
+            throw new PorcupineRuntimeException(
+                    "Failed to create request payload " + e.getMessage()
+            );
+        }
+
+        Request request = new Request.Builder()
+                .url(PV_API_URL + language + "/api/ppn")
+                .post(RequestBody.create(
+                        payload,
+                        MediaType.parse("application/json")
+                ))
+                .addHeader("x-api-key", accessKey)
+                .build();
+
+        try (Response res = client.newCall(request).execute()) {
+            if (!res.isSuccessful()) {
+                String errorBody = res.body() != null ? res.body().string() : "";
+                throw new PorcupineRuntimeException("Failed to train model: " + errorBody);
+            }
+
+            if (res.body() == null) {
+                throw new PorcupineRuntimeException("Empty response body");
+            }
+
+            byte[] data = res.body().bytes();
+
+            if (data.length == 0) {
+                throw new PorcupineRuntimeException("Empty response body");
+            }
+
+            File file = new File(outputPath);
+            try (FileOutputStream fos = new FileOutputStream(file)) {
+                fos.write(data);
+            } catch (IOException e) {
+                throw new PorcupineRuntimeException(
+                        "Failed to save Porcupine model: " + e.getMessage()
+                );
+            }
+        } catch (IOException e) {
+            throw new PorcupineRuntimeException(
+                    "Request failed: " + e.getMessage()
+            );
+        }
+    }
+
+    /**
+     * Lists all available devices that Porcupine can use for inference.
+     * Each entry in the list can be used as the `device` argument when initializing Porcupine.
+     *
+     * @return Array of all available devices that Porcupine can be used for inference.
+     * @throws PorcupineException if getting available devices fails.
+     */
+    public static String[] getAvailableDevices() throws PorcupineException {
+        return PorcupineNative.listHardwareDevices();
+    }
+    
     /**
      * Constructor.
      *
+     * @param accessKey     AccessKey obtained from Picovoice Console (https://console.picovoice.ai/).
      * @param modelPath     Absolute path to the file containing model parameters.
+     * @param device        String representation of the device (e.g., CPU or GPU) to use for inference.
+     *                      If set to `best`, the most suitable device is selected automatically. If set to `gpu`,
+     *                      the engine uses the first available GPU device. To select a specific GPU device, set this
+     *                      argument to `gpu:${GPU_INDEX}`, where `${GPU_INDEX}` is the index of the target GPU. If
+     *                      set to `cpu`, the engine will run on the CPU with the default number of threads. To specify
+     *                      the number of threads, set this argument to `cpu:${NUM_THREADS}`, where `${NUM_THREADS}`
+     *                      is the desired number of threads.
      * @param keywordPaths  Absolute paths to keyword model files.
      * @param sensitivities Sensitivities for detecting keywords. Each value should be a number
      *                      within [0, 1]. A higher sensitivity results in fewer misses at the cost
      *                      of increasing the false alarm rate.
      * @throws PorcupineException if there is an error while initializing Porcupine.
      */
-    private Porcupine(String modelPath, String[] keywordPaths, float[] sensitivities) throws PorcupineException {
-        try {
-            handle = init(modelPath, keywordPaths, sensitivities);
-        } catch (Exception e) {
-            throw new PorcupineException(e);
-        }
+    private Porcupine(
+            String accessKey,
+            String modelPath,
+            String device,
+            String[] keywordPaths,
+            float[] sensitivities) throws PorcupineException {
+        PorcupineNative.setSdk(Porcupine._sdk);
+
+        handle = PorcupineNative.init(
+                accessKey,
+                modelPath,
+                device,
+                keywordPaths,
+                sensitivities);
     }
 
     /**
@@ -73,7 +208,7 @@ public class Porcupine {
      */
     public void delete() {
         if (handle != 0) {
-            delete(handle);
+            PorcupineNative.delete(handle);
             handle = 0;
         }
     }
@@ -86,32 +221,25 @@ public class Porcupine {
      *            equal to {@link #getSampleRate()} and be 16-bit linearly-encoded. Porcupine
      *            operates on single-channel audio.
      * @return Index of observed keyword at the end of the current frame. Indexing is 0-based and
-     * matches the ordering of keyword models provided to the constructor. If no keyword is detected
-     * then it returns -1.
+     *         matches the ordering of keyword models provided to the constructor. If no keyword is detected
+     *         then it returns -1.
      * @throws PorcupineException if there is an error while processing the audio frame.
      */
     public int process(short[] pcm) throws PorcupineException {
         if (handle == 0) {
-            throw new PorcupineException(
-                    new IllegalStateException("Attempted to call Porcupine process after delete."));
+            throw new PorcupineInvalidStateException("Attempted to call Porcupine process after delete.");
         }
         if (pcm == null) {
-            throw new PorcupineException(
-                    new IllegalArgumentException("Passed null frame to Porcupine process."));
+            throw new PorcupineInvalidArgumentException("Passed null frame to Porcupine process.");
         }
 
         if (pcm.length != getFrameLength()) {
-            throw new PorcupineException(
-                    new IllegalArgumentException(
+            throw new PorcupineInvalidArgumentException(
                             String.format("Porcupine process requires frames of length %d. " +
-                                    "Received frame of size %d.", getFrameLength(), pcm.length)));
+                                    "Received frame of size %d.", getFrameLength(), pcm.length));
         }
 
-        try {
-            return process(handle, pcm);
-        } catch (Exception e) {
-            throw new PorcupineException(e);
-        }
+        return PorcupineNative.process(handle, pcm);
     }
 
     /**
@@ -119,28 +247,31 @@ public class Porcupine {
      *
      * @return Version.
      */
-    public native String getVersion();
+    public String getVersion() {
+        return PorcupineNative.getVersion();
+    }
 
     /**
      * Getter for number of audio samples per frame..
      *
      * @return Number of audio samples per frame.
      */
-    public native int getFrameLength();
+    public int getFrameLength() {
+        return PorcupineNative.getFrameLength();
+    }
 
     /**
      * Getter for audio sample rate accepted by Picovoice.
      *
      * @return Audio sample rate accepted by Picovoice.
      */
-    public native int getSampleRate();
+    public int getSampleRate() {
+        return PorcupineNative.getSampleRate();
+    }
 
-    private native long init(String modelPath, String[] keywordPaths, float[] sensitivities);
-
-    private native void delete(long object);
-
-    private native int process(long object, short[] pcm);
-
+    /**
+     * Porcupine BuiltInKeywords.
+     */
     public enum BuiltInKeyword {
         ALEXA,
         AMERICANO,
@@ -159,17 +290,29 @@ public class Porcupine {
     }
 
     /**
-     * Builder for creating an instance of Porcupine with a mixture of default arguments
+     * Builder for creating an instance of Porcupine with a mixture of default arguments.
      */
     public static class Builder {
 
+        private String accessKey = null;
         private String modelPath = null;
+        private String device = null;
         private String[] keywordPaths = null;
         private BuiltInKeyword[] keywords = null;
         private float[] sensitivities = null;
 
+        public Builder setAccessKey(String accessKey) {
+            this.accessKey = accessKey;
+            return this;
+        }
+
         public Builder setModelPath(String modelPath) {
             this.modelPath = modelPath;
+            return this;
+        }
+
+        public Builder setDevice(String device) {
+            this.device = device;
             return this;
         }
 
@@ -203,7 +346,7 @@ public class Porcupine {
             return this;
         }
 
-        private void extractPackageResources(Context context) throws PorcupineException {
+        private void extractPackageResources(Context context) throws PorcupineIOException {
             final Resources resources = context.getResources();
 
             try {
@@ -212,7 +355,9 @@ public class Porcupine {
                     final String keywordPath = extractResource(context,
                             resources.openRawResource(resourceId),
                             keywordName + ".ppn");
-                    BUILT_IN_KEYWORD_PATHS.put(BuiltInKeyword.valueOf(keywordName.toUpperCase()), keywordPath);
+                    BUILT_IN_KEYWORD_PATHS.put(
+                            BuiltInKeyword.valueOf(keywordName.toUpperCase(Locale.ENGLISH)), keywordPath
+                    );
                 }
 
                 DEFAULT_MODEL_PATH = extractResource(context,
@@ -221,11 +366,12 @@ public class Porcupine {
 
                 isExtracted = true;
             } catch (IOException ex) {
-                throw new PorcupineException(ex);
+                throw new PorcupineIOException(ex);
             }
         }
 
-        private String extractResource(Context context, InputStream srcFileStream, String dstFilename) throws IOException {
+        private String extractResource(Context context, InputStream srcFileStream, String dstFilename)
+                throws IOException {
             InputStream is = new BufferedInputStream(srcFileStream, 256);
             OutputStream os = new BufferedOutputStream(context.openFileOutput(dstFilename, Context.MODE_PRIVATE), 256);
             int r;
@@ -252,6 +398,10 @@ public class Porcupine {
                 extractPackageResources(context);
             }
 
+            if (this.accessKey == null || this.accessKey.equals("")) {
+                throw new PorcupineInvalidArgumentException("No AccessKey provided to Porcupine.");
+            }
+
             if (modelPath == null) {
                 modelPath = DEFAULT_MODEL_PATH;
             } else {
@@ -263,20 +413,23 @@ public class Porcupine {
                                 context.getAssets().open(modelPath),
                                 modelFilename);
                     } catch (IOException ex) {
-                        throw new PorcupineException(ex);
+                        throw new PorcupineIOException(ex);
                     }
                 }
             }
 
+            if (device == null) {
+                device = "best";
+            }
+
             if (this.keywordPaths != null && this.keywords != null) {
-                throw new PorcupineException(new IllegalArgumentException("Both 'keywords' and 'keywordPaths' were set. " +
-                        "Only one of the two arguments may be set for initialization."));
+                throw new PorcupineInvalidArgumentException("Both 'keywords' and 'keywordPaths' were set. " +
+                        "Only one of the two arguments may be set for initialization.");
             }
 
             if (this.keywordPaths == null) {
                 if (this.keywords == null) {
-                    throw new PorcupineException(
-                            new IllegalArgumentException("Either 'keywords' or 'keywordPaths' must be set."));
+                    throw new PorcupineInvalidArgumentException("Either 'keywords' or 'keywordPaths' must be set.");
                 }
 
                 this.keywordPaths = new String[keywords.length];
@@ -286,8 +439,7 @@ public class Porcupine {
             } else {
                 for (int i = 0; i < keywordPaths.length; i++) {
                     if (keywordPaths[i] == null || keywordPaths[i].equals("")) {
-                        throw new PorcupineException(
-                                new IllegalArgumentException("Empty keyword path passed to Porcupine."));
+                        throw new PorcupineInvalidArgumentException("Empty keyword path passed to Porcupine.");
                     }
 
                     File keywordFile = new File(keywordPaths[i]);
@@ -298,7 +450,7 @@ public class Porcupine {
                                     context.getAssets().open(keywordPaths[i]),
                                     keywordFilename);
                         } catch (IOException ex) {
-                            throw new PorcupineException(ex);
+                            throw new PorcupineIOException(ex);
                         }
                     }
                 }
@@ -310,11 +462,19 @@ public class Porcupine {
             }
 
             if (sensitivities.length != keywordPaths.length) {
-                throw new PorcupineException(new IllegalArgumentException(String.format("Number of keywords (%d) " +
-                        "does not match number of sensitivities (%d)", keywordPaths.length, sensitivities.length)));
+                throw new PorcupineInvalidArgumentException(
+                        String.format("Number of keywords (%d) " +
+                                "does not match number of sensitivities (%d)",
+                                keywordPaths.length,
+                                sensitivities.length));
             }
 
-            return new Porcupine(modelPath, keywordPaths, sensitivities);
+            return new Porcupine(
+                    accessKey,
+                    modelPath,
+                    device,
+                    keywordPaths,
+                    sensitivities);
         }
     }
 }

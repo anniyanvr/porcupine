@@ -1,18 +1,19 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Threading.Tasks;
 
-using ReactiveUI;
 using Avalonia.Media;
 
 using Pv;
-using OpenTK.Audio.OpenAL;
+
+using ReactiveUI;
 
 namespace AvaloniaVUI.ViewModels
 {
     public class MainWindowViewModel : ViewModelBase
     {
+        private const string ACCESS_KEY = "{YOUR_ACCESS_KEY_HERE}";
+
         private Color _backgroundColor = Colors.LightGray;
         public Color BackgroundColor
         {
@@ -76,43 +77,45 @@ namespace AvaloniaVUI.ViewModels
         {
             Task.Factory.StartNew(() =>
             {
-                List<string> commands = new List<string> { "grapefruit", "grasshopper", "bumblebee", "blueberry" };
-                using Porcupine porcupine = Porcupine.Create(keywords: commands);
+                List<BuiltInKeyword> commands = new List<BuiltInKeyword> {
+                    BuiltInKeyword.GRAPEFRUIT,
+                    BuiltInKeyword.GRASSHOPPER,
+                    BuiltInKeyword.BUMBLEBEE,
+                    BuiltInKeyword.BLUEBERRY
+                };
 
-                short[] frameBuffer = new short[porcupine.FrameLength];
-                ALCaptureDevice captureDevice = ALC.CaptureOpenDevice(null, porcupine.SampleRate, ALFormat.Mono16, porcupine.FrameLength * 2);
+                using Porcupine porcupine = Porcupine.FromBuiltInKeywords(ACCESS_KEY, commands);
+
+                // create and start recording
+                using PvRecorder recorder = PvRecorder.Create(porcupine.FrameLength);
+                recorder.Start();
+
+                Console.WriteLine($"Using device: {recorder.SelectedDevice}");
+                Console.WriteLine("Listening...");
+
+                while (true)
                 {
-                    ALC.CaptureStart(captureDevice);
-                    while (true)
+                    short[] frame = recorder.Read();
+                    int keywordIndex = porcupine.Process(frame);
+                    if (keywordIndex >= 0)
                     {
-                        int samplesAvailable = ALC.GetAvailableSamples(captureDevice);
-                        if (samplesAvailable > porcupine.FrameLength)
+                        switch (keywordIndex)
                         {
-                            ALC.CaptureSamples(captureDevice, ref frameBuffer[0], porcupine.FrameLength);
-                            int keywordIndex = porcupine.Process(frameBuffer);
-
-                            if (keywordIndex >= 0)
-                            {
-                                switch (keywordIndex)
-                                {
-                                    case 0:
-                                        IsGrapefruit = true;
-                                        break;
-                                    case 1:
-                                        IsGrasshopper = true;
-                                        break;
-                                    case 2:
-                                        IsBumblebee = true;
-                                        break;
-                                    case 3:
-                                        IsBlueberry = true;
-                                        break;
-                                }
-                            }
+                            case 0:
+                                IsGrapefruit = true;
+                                break;
+                            case 1:
+                                IsGrasshopper = true;
+                                break;
+                            case 2:
+                                IsBumblebee = true;
+                                break;
+                            case 3:
+                                IsBlueberry = true;
+                                break;
                         }
                     }
                 }
-
             });
         }
     }

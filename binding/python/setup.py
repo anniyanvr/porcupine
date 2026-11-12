@@ -1,5 +1,5 @@
 #
-# Copyright 2019-2020 Picovoice Inc.
+# Copyright 2019-2026 Picovoice Inc.
 #
 # You may not use this file except in compliance with the license. A copy of the license is located in the "LICENSE"
 # file accompanying this source.
@@ -22,10 +22,11 @@ os.mkdir(package_folder)
 shutil.copy(os.path.join(os.path.dirname(__file__), '../../LICENSE'), package_folder)
 
 shutil.copy(os.path.join(os.path.dirname(__file__), '__init__.py'), os.path.join(package_folder, '__init__.py'))
-shutil.copy(os.path.join(os.path.dirname(__file__), 'porcupine.py'), os.path.join(package_folder, 'porcupine.py'))
-shutil.copy(os.path.join(os.path.dirname(__file__), 'util.py'), os.path.join(package_folder, 'util.py'))
+shutil.copy(os.path.join(os.path.dirname(__file__), '_porcupine.py'), os.path.join(package_folder, '_porcupine.py'))
+shutil.copy(os.path.join(os.path.dirname(__file__), '_factory.py'), os.path.join(package_folder, '_factory.py'))
+shutil.copy(os.path.join(os.path.dirname(__file__), '_util.py'), os.path.join(package_folder, '_util.py'))
 
-platforms = ('beaglebone', 'jetson', 'linux', 'mac', 'raspberry-pi', 'windows')
+platforms = ('linux', 'mac', 'raspberry-pi', 'windows')
 
 os.mkdir(os.path.join(package_folder, 'lib'))
 for platform in ('common',) + platforms:
@@ -41,19 +42,18 @@ for platform in platforms:
 MANIFEST_IN = """
 include pvporcupine/LICENSE
 include pvporcupine/__init__.py
-include pvporcupine/porcupine.py
-include pvporcupine/util.py
+include pvporcupine/_porcupine.py
+include pvporcupine/_factory.py
+include pvporcupine/_util.py
 include pvporcupine/lib/common/porcupine_params.pv
-include pvporcupine/lib/beaglebone/libpv_porcupine.so
-recursive-include pvporcupine/lib/jetson *
 include pvporcupine/lib/linux/x86_64/libpv_porcupine.so
 include pvporcupine/lib/mac/x86_64/libpv_porcupine.dylib
+include pvporcupine/lib/mac/arm64/libpv_porcupine.dylib
 recursive-include pvporcupine/lib/raspberry-pi *
-include pvporcupine/lib/windows/amd64/libpv_porcupine.dll
-recursive-include pvporcupine/resources/keyword_files/beaglebone *
-recursive-include pvporcupine/resources/keyword_files/jetson *
+recursive-include pvporcupine/lib/windows/amd64 *
+include pvporcupine/lib/windows/arm64/libpv_porcupine.dll
 recursive-include pvporcupine/resources/keyword_files/linux *
-recursive-include pvporcupine/resources/keyword_files/mac/ *
+recursive-include pvporcupine/resources/keyword_files/mac *
 recursive-include pvporcupine/resources/keyword_files/raspberry-pi *
 recursive-include pvporcupine/resources/keyword_files/windows *
 """
@@ -66,7 +66,7 @@ with open(os.path.join(os.path.dirname(__file__), 'README.md'), 'r') as f:
 
 setuptools.setup(
     name="pvporcupine",
-    version="1.9.5",
+    version="4.0.3",
     author="Picovoice",
     author_email="hello@picovoice.ai",
     description="Porcupine wake word engine.",
@@ -74,7 +74,9 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/Picovoice/porcupine",
     packages=["pvporcupine"],
-    install_requires=["enum34", "numpy"],
+    install_requires=[
+        "requests",
+    ],
     include_package_data=True,
     classifiers=[
         "Development Status :: 5 - Production/Stable",
@@ -84,6 +86,6 @@ setuptools.setup(
         "Programming Language :: Python :: 3",
         "Topic :: Multimedia :: Sound/Audio :: Speech"
     ],
-    python_requires='>=3',
+    python_requires='>=3.9',
     keywords="wake word engine, hotword detection, keyword spotting, wake word detection, voice commands",
 )

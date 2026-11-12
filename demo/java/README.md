@@ -17,10 +17,16 @@ Porcupine is:
 
 To learn more about Porcupine, see the [product](https://picovoice.ai/products/porcupine/), [documentation](https://picovoice.ai/docs/), and [GitHub](https://github.com/Picovoice/porcupine/) pages.
 
-## Compatibility
+## Requirements
 
 - Java 11+
-- Runs on Linux (x86_64), macOS (x86_64) and Windows (x86_64)
+
+## Compatibility
+
+- Linux (x86_64)
+- macOS (x86_64, arm64)
+- Windows (x86_64, arm64)
+- Raspberry Pi 3, 4 and 5 (32 and 64 bit)
 
 ## Installation
 
@@ -38,6 +44,12 @@ Navigate to the output directory to use the demos:
 cd porcupine/demo/java/build/libs
 ```
 
+## AccessKey
+
+Porcupine requires a valid Picovoice `AccessKey` at initialization. `AccessKey` acts as your credentials when using Porcupine SDKs.
+You can get your `AccessKey` for free. Make sure to keep your `AccessKey` secret.
+Signup or Login to [Picovoice Console](https://console.picovoice.ai/) to get your `AccessKey`.
+
 ### File Demo
 
 The file demo uses Porcupine to scan for keywords in a wave file. The demo is mainly useful for quantitative performance benchmarking against a corpus of audio data. 
@@ -45,10 +57,10 @@ Porcupine processes a 16kHz, single-channel audio stream. If a stereo file is pr
 The following processes a file looking for instances of the phrase "Picovoice":
 
 ```console
-java -jar porcupine-file-demo.jar -i ${AUDIO_PATH} -k picovoice
+java -jar porcupine-file-demo.jar -a ${ACCESS_KEY} -i ${AUDIO_PATH} -k picovoice
 ```
 
-`-k` or `--keywords` is a shorthand for using default keyword files shipped with the package. The list of default keyword files
+`-k` or `--keywords` is a shorthand for using built-in keywords shipped with the package. The list of built-in keyword files
 can be seen in the usage string:
 
 ```console
@@ -58,20 +70,20 @@ java -jar porcupine-file-demo.jar -h
 To detect multiple phrases concurrently provide them as separate arguments. If the wake word is more than a single word, surround the argument in quotation marks:
 
 ```console
-java -jar porcupine-file-demo.jar -i ${AUDIO_PATH} -k grasshopper "hey siri"
+java -jar porcupine-file-demo.jar -a ${ACCESS_KEY} -i ${AUDIO_PATH} -k grasshopper "hey siri"
 ```
 
-To detect non-default keywords (e.g. models created using [Picovoice Console](https://picovoice.ai/console/))
+To detect custom keywords (e.g. models created using [Picovoice Console](https://console.picovoice.ai/))
 use the `-kp` or `--keyword_paths` argument:
 
 ```console
-java -jar porcupine-file-demo.jar -i ${AUDIO_PATH} -kp ${KEYWORD_PATH_ONE} ${KEYWORD_PATH_TWO}
+java -jar porcupine-file-demo.jar -a ${ACCESS_KEY} -i ${AUDIO_PATH} -kp ${KEYWORD_PATH_ONE} ${KEYWORD_PATH_TWO}
 ```
 
 The sensitivity of the engine can be tuned per keyword using the `-s` or `--sensitivities` input argument:
 
 ```console
-java -jar porcupine-file-demo.jar -i ${AUDIO_PATH} -k grasshopper porcupine -s 0.3 0.6
+java -jar porcupine-file-demo.jar -a ${ACCESS_KEY} -i ${AUDIO_PATH} -k grasshopper porcupine -s 0.3 0.6
 ```
 
 Sensitivity is the parameter that enables trading miss rate for the false alarm rate. It is a floating-point number within
@@ -83,10 +95,10 @@ This demo opens an audio stream from a microphone and detects utterances of a gi
 microphone and detects occurrences of "Picovoice":
 
 ```console
-java -jar porcupine-mic-demo.jar -k picovoice
+java -jar porcupine-mic-demo.jar -a ${ACCESS_KEY} -k picovoice
 ```
 
-`-k` or `--keywords` is a shorthand for using default keyword files shipped with the package. The list of default keyword files
+`-k` or `--keywords` is a shorthand for using built-in keyword files shipped with the package. The list of built-in keyword files
 can be seen in the usage string:
 
 ```console
@@ -96,14 +108,14 @@ java -jar porcupine-mic-demo.jar -h
 To detect multiple phrases concurrently provide them as separate arguments. If the wake word is more than a single word, surround the argument in quotation marks: 
 
 ```console
-java -jar porcupine-mic-demo.jar -k picovoice "hey siri"
+java -jar porcupine-mic-demo.jar -a ${ACCESS_KEY} -k picovoice "hey siri"
 ```
 
-To detect non-default keywords (e.g. models created using [Picovoice Console](https://picovoice.ai/console/))
+To detect custom keywords (e.g. models created using [Picovoice Console](https://console.picovoice.ai/))
 use the `-kp` or `--keyword_paths` argument:
 
 ```console
-java -jar porcupine-mic-demo.jar -kp ${KEYWORD_PATH_ONE} ${KEYWORD_PATH_TWO}
+java -jar porcupine-mic-demo.jar -a ${ACCESS_KEY} -kp ${KEYWORD_PATH_ONE} ${KEYWORD_PATH_TWO}
 ```
 
 It is possible that the default audio input device is not the one you wish to use. There are a couple
@@ -126,13 +138,13 @@ You can use the device index to specify which microphone to use for the demo. Fo
 microphone in the above example, you can invoke the demo application as below:
 
 ```console
-java -jar porcupine-mic-demo.jar -k picovoice -di 5
+java -jar porcupine-mic-demo.jar -a ${ACCESS_KEY} -k picovoice -di 5
 ```
 
 If the problem persists we suggest storing the recorded audio into a file for inspection. This can be achieved with:
 
 ```console
-java -jar porcupine-mic-demo.jar -k picovoice -di 5 -o ./test.wav
+java -jar porcupine-mic-demo.jar -a ${ACCESS_KEY} -k picovoice -di 5 -o ./test.wav
 ```
 
 If after listening to stored file there is no apparent problem detected please open an issue.

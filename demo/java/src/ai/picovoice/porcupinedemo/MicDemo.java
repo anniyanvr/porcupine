@@ -1,5 +1,5 @@
 /*
-    Copyright 2018-2020 Picovoice Inc.
+    Copyright 2018-2025 Picovoice Inc.
 
     You may not use this file except in compliance with the license. A copy of the license is
     located in the "LICENSE" file accompanying this source.
@@ -13,6 +13,7 @@
 package ai.picovoice.porcupinedemo;
 
 import ai.picovoice.porcupine.Porcupine;
+import ai.picovoice.porcupine.PorcupineException;
 import org.apache.commons.cli.*;
 
 import javax.sound.sampled.*;
@@ -24,20 +25,28 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
+import java.util.*;
+import java.util.Locale;
 
 public class MicDemo {
-    public static void runDemo(String libPath, String modelPath,
-                               String[] keywordPaths, float[] sensitivities,
-                               int audioDeviceIndex, String outputPath) {
+    public static void runDemo(
+            String accessKey,
+            String libPath,
+            String modelPath,
+            String device,
+            String[] keywordPaths,
+            float[] sensitivities,
+            int audioDeviceIndex,
+            String outputPath) {
 
         // create keywords from keyword_paths
         String[] keywords = new String[keywordPaths.length];
         for (int i = 0; i < keywordPaths.length; i++) {
             File keywordFile = new File(keywordPaths[i]);
-            if (!keywordFile.exists())
+            if (!keywordFile.exists()) {
                 throw new IllegalArgumentException(String.format("Keyword file at '%s' " +
                         "does not exist", keywordPaths[i]));
+            }
             keywords[i] = keywordFile.getName().split("_")[0];
         }
 
@@ -54,7 +63,8 @@ public class MicDemo {
             micDataLine = getAudioDevice(audioDeviceIndex, dataLineInfo);
             micDataLine.open(format);
         } catch (LineUnavailableException e) {
-            System.err.println("Failed to get a valid capture device. Use --show_audio_devices to " +
+            System.err.println(
+                    "Failed to get a valid capture device. Use --show_audio_devices to " +
                     "show available capture devices and their indices");
             System.exit(1);
             return;
@@ -62,10 +72,11 @@ public class MicDemo {
 
         Porcupine porcupine = null;
         try {
-
             porcupine = new Porcupine.Builder()
+                    .setAccessKey(accessKey)
                     .setLibraryPath(libPath)
                     .setModelPath(modelPath)
+                    .setDevice(device)
                     .setKeywordPaths(keywordPaths)
                     .setSensitivities(sensitivities)
                     .build();
@@ -113,7 +124,8 @@ public class MicDemo {
                 int result = porcupine.process(porcupineBuffer);
                 if (result >= 0) {
                     System.out.printf("[%s] Detected '%s'\n",
-                            LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")), keywords[result]);
+                            LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")),
+                            keywords[result]);
                 }
             }
         } catch (Exception e) {
@@ -122,8 +134,13 @@ public class MicDemo {
             if (outputStream != null && outputFile != null) {
 
                 // need to transfer to input stream to write
-                ByteArrayInputStream writeArray = new ByteArrayInputStream(outputStream.toByteArray());
-                AudioInputStream writeStream = new AudioInputStream(writeArray, format, totalBytesCaptured / format.getFrameSize());
+                ByteArrayInputStream writeArray =
+                        new ByteArrayInputStream(outputStream.toByteArray());
+                AudioInputStream writeStream = new AudioInputStream(
+                        writeArray,
+                        format,
+                        totalBytesCaptured / format.getFrameSize()
+                );
 
                 try {
                     AudioSystem.write(writeStream, AudioFileFormat.Type.WAVE, outputFile);
@@ -155,17 +172,20 @@ public class MicDemo {
         }
     }
 
-    private static TargetDataLine getDefaultCaptureDevice(DataLine.Info dataLineInfo) throws LineUnavailableException {
+    private static TargetDataLine getDefaultCaptureDevice(DataLine.Info dataLineInfo)
+            throws LineUnavailableException {
 
         if (!AudioSystem.isLineSupported(dataLineInfo)) {
-            throw new LineUnavailableException("Default capture device does not support the audio " +
-                    "format required by Picovoice (16kHz, 16-bit, linearly-encoded, single-channel PCM).");
+            throw new LineUnavailableException(
+                            "Default capture device does not support the format required " +
+                            "by Picovoice (16kHz, 16-bit, linearly-encoded, single-channel PCM).");
         }
 
         return (TargetDataLine) AudioSystem.getLine(dataLineInfo);
     }
 
-    private static TargetDataLine getAudioDevice(int deviceIndex, DataLine.Info dataLineInfo) throws LineUnavailableException {
+    private static TargetDataLine getAudioDevice(int deviceIndex, DataLine.Info dataLineInfo)
+            throws LineUnavailableException {
 
         if (deviceIndex >= 0) {
             try {
@@ -175,11 +195,14 @@ public class MicDemo {
                 if (mixer.isLineSupported(dataLineInfo)) {
                     return (TargetDataLine) mixer.getLine(dataLineInfo);
                 } else {
-                    System.err.printf("Audio capture device at index %s does not support the audio format required by " +
-                            "Picovoice. Using default capture device.", deviceIndex);
+                    System.err.printf("Audio capture device at index %s does not support the " +
+                            "audio format required by Picovoice. Using default capture device.",
+                            deviceIndex);
                 }
             } catch (Exception e) {
-                System.err.printf("No capture device found at index %s. Using default capture device.", deviceIndex);
+                System.err.printf(
+                        "No capture device found at index %s. Using default capture device.",
+                        deviceIndex);
             }
         }
 
@@ -189,7 +212,7 @@ public class MicDemo {
 
     public static void main(String[] args) {
 
-        Options options = BuildCommandLineOptions();
+        Options options = buildCommandLineOptions();
         CommandLineParser parser = new DefaultParser();
         HelpFormatter formatter = new HelpFormatter();
 
@@ -213,13 +236,32 @@ public class MicDemo {
             return;
         }
 
+        if (cmd.hasOption("show_inference_devices")) {
+            try {
+                String[] devices = Porcupine.getAvailableDevices();
+                for (int i = 0; i < devices.length; i++) {
+                    System.out.println(devices[i]);
+                }
+                return;
+            } catch (PorcupineException e) {
+                System.out.println(e.getMessage());
+                System.exit(1);
+            }
+        }
+
+        String accessKey = cmd.getOptionValue("access_key");
         String libraryPath = cmd.getOptionValue("library_path");
         String modelPath = cmd.getOptionValue("model_path");
+        String device = cmd.getOptionValue("device");
         String[] keywords = cmd.getOptionValues("keywords");
         String[] keywordPaths = cmd.getOptionValues("keyword_paths");
         String[] sensitivitiesStr = cmd.getOptionValues("sensitivities");
         String audioDeviceIndexStr = cmd.getOptionValue("audio_device_index");
         String outputPath = cmd.getOptionValue("output_path");
+
+        if (accessKey == null || accessKey.length() == 0) {
+            throw new IllegalArgumentException("AccessKey is required for Porcupine.");
+        }
 
         // parse sensitivity array
         float[] sensitivities = null;
@@ -236,7 +278,8 @@ public class MicDemo {
                 }
 
                 if (sensitivity < 0 || sensitivity > 1) {
-                    throw new IllegalArgumentException(String.format("Failed to parse sensitivity value (%s). " +
+                    throw new IllegalArgumentException(
+                            String.format("Failed to parse sensitivity value (%s). " +
                             "Must be a decimal value between [0,1].", sensitivitiesStr[i]));
                 }
                 sensitivities[i] = sensitivity;
@@ -251,19 +294,27 @@ public class MicDemo {
             modelPath = Porcupine.MODEL_PATH;
         }
 
+        if (device == null) {
+            device = "best";
+        }
+
         if (keywordPaths == null || keywordPaths.length == 0) {
             if (keywords == null || keywords.length == 0) {
-                throw new IllegalArgumentException("Either '--keywords' or '--keyword_paths' must be set.");
+                throw new IllegalArgumentException(
+                        "Either '--keywords' or '--keyword_paths' must be set.");
             }
 
-            if (Porcupine.KEYWORDS.containsAll(Arrays.asList(keywords))) {
-                keywordPaths = new String[keywords.length];
-                for (int i = 0; i < keywords.length; i++) {
-                    keywordPaths[i] = Porcupine.KEYWORD_PATHS.get(keywords[i]);
+            keywordPaths = new String[keywords.length];
+            for (int i = 0; i < keywords.length; i++) {
+                final String keyword = keywords[i].toUpperCase(Locale.ENGLISH).replace(" ", "_");
+                try {
+                    final Porcupine.BuiltInKeyword builtInKeyword =
+                            Porcupine.BuiltInKeyword.valueOf(keyword);
+                    keywordPaths[i] = Porcupine.BUILT_IN_KEYWORD_PATHS.get(builtInKeyword);
+                } catch (Exception e) {
+                    throw new IllegalArgumentException(
+                            String.format("'%s' not a built-in keyword", keyword));
                 }
-            } else {
-                throw new IllegalArgumentException("One or more keywords are not available by default. " +
-                        "Available default keywords are:\n" + String.join(",", Porcupine.KEYWORDS));
             }
         }
 
@@ -273,8 +324,11 @@ public class MicDemo {
         }
 
         if (sensitivities.length != keywordPaths.length) {
-            throw new IllegalArgumentException(String.format("Number of keywords (%d) does " +
-                    "not match number of sensitivities (%d)", keywordPaths.length, sensitivities.length));
+            throw new IllegalArgumentException(
+                    String.format("Number of keywords (%d) does " +
+                            "not match number of sensitivities (%d)",
+                            keywordPaths.length,
+                            sensitivities.length));
         }
 
         int audioDeviceIndex = -1;
@@ -282,20 +336,37 @@ public class MicDemo {
             try {
                 audioDeviceIndex = Integer.parseInt(audioDeviceIndexStr);
                 if (audioDeviceIndex < 0) {
-                    throw new IllegalArgumentException(String.format("Audio device index %s is not a " +
-                            "valid positive integer.", audioDeviceIndexStr));
+                    throw new IllegalArgumentException(
+                            String.format("Audio device index %s is not a " +
+                                    "valid positive integer.",
+                                    audioDeviceIndexStr));
                 }
             } catch (Exception e) {
-                throw new IllegalArgumentException(String.format("Audio device index '%s' is not a " +
-                        "valid positive integer.", audioDeviceIndexStr));
+                throw new IllegalArgumentException(
+                        String.format("Audio device index '%s' is not a " +
+                                "valid positive integer.",
+                                audioDeviceIndexStr));
             }
         }
 
-        runDemo(libraryPath, modelPath, keywordPaths, sensitivities, audioDeviceIndex, outputPath);
+        runDemo(accessKey,
+                libraryPath,
+                modelPath,
+                device,
+                keywordPaths,
+                sensitivities,
+                audioDeviceIndex,
+                outputPath);
     }
 
-    private static Options BuildCommandLineOptions() {
+    private static Options buildCommandLineOptions() {
         Options options = new Options();
+
+        options.addOption(Option.builder("a")
+                .longOpt("access_key")
+                .hasArg(true)
+                .desc("AccessKey obtained from Picovoice Console (https://console.picovoice.ai/).")
+                .build());
 
         options.addOption(Option.builder("l")
                 .longOpt("library_path")
@@ -309,26 +380,34 @@ public class MicDemo {
                 .desc("Absolute path to the file containing model parameters.")
                 .build());
 
+        options.addOption(Option.builder("y")
+                .longOpt("device")
+                .hasArg(true)
+                .desc("Device to run inference on (`best`, `cpu:{num_threads}` or `gpu:{gpu_index}`). " +
+                        "Default: automatically selects best device.")
+                .build());
+
         options.addOption(Option.builder("k")
                 .longOpt("keywords")
                 .hasArgs()
-                .desc(String.format("List of default keywords for detection. Available keywords: %s",
-                        String.join(",", Porcupine.KEYWORDS)))
+                .desc(String.format(
+                        "List of default keywords for detection. Available keywords: %s",
+                        Porcupine.BuiltInKeyword.options()))
                 .build());
 
         options.addOption(Option.builder("kp")
                 .longOpt("keyword_paths")
                 .hasArgs()
-                .desc("Absolute paths to keyword model files. If not set it will be populated from " +
-                        "`--keywords` argument")
+                .desc("Absolute paths to keyword model files.")
                 .build());
 
         options.addOption(Option.builder("s")
                 .longOpt("sensitivities")
                 .hasArgs()
-                .desc("Sensitivities for detecting keywords. Each value should be a number within [0, 1]. A higher " +
-                        "sensitivity results in fewer misses at the cost of increasing the false alarm rate. " +
-                        "If not set 0.5 will be used.")
+                .desc("Sensitivities for detecting keywords. Each value should" +
+                        "be a number within [0, 1]. A higher sensitivity results in fewer " +
+                        "misses at the cost of increasing the false alarm rate. If not " +
+                        "set 0.5 will be used.")
                 .build());
 
         options.addOption(Option.builder("o")
@@ -343,8 +422,15 @@ public class MicDemo {
                 .desc("Index of input audio device.")
                 .build());
 
-        options.addOption(new Option("sd", "show_audio_devices", false, "Print available recording devices."));
+        options.addOption(new Option("sd",
+                "show_audio_devices",
+                false,
+                "Print available recording devices."));
         options.addOption(new Option("h", "help", false, ""));
+        options.addOption(new Option("sy",
+                "show_inference_devices",
+                false,
+                "Print devices that are available to run Porcupine inference."));
 
         return options;
     }

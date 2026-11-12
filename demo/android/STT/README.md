@@ -2,6 +2,12 @@
 
 Porcupine Wake Word engine with Android STT.
 
+## AccessKey
+
+Porcupine requires a valid Picovoice `AccessKey` at initialization. `AccessKey` acts as your credentials when using Porcupine SDKs.
+You can get your `AccessKey` for free. Make sure to keep your `AccessKey` secret.
+Signup or Login to [Picovoice Console](https://console.picovoice.ai/) to get your `AccessKey`.
+
 ## Usage
 
 Open demo/android/STT with Android Studio. Launch the demo on your connected Android device or simulator.

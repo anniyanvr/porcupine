@@ -1,30 +1,28 @@
 {
-  "name": "porcupine-web-react-demo",
-  "version": "1.3.2",
+  "name": "porcupine-react-demo",
+  "version": "4.0.0",
   "private": true,
   "description": "Porcupine React demo (made with Create React App)",
   "dependencies": {
-    "@picovoice/porcupine-web-en-worker": "^1.9.4",
-    "@picovoice/porcupine-web-react": "^1.3.2",
-    "@picovoice/web-voice-processor": "^2.0.3",
-    "@testing-library/jest-dom": "^5.11.4",
-    "@testing-library/react": "^11.1.0",
-    "@testing-library/user-event": "^12.1.10",
-    "@types/jest": "^26.0.22",
-    "@types/node": "^14.14.41",
-    "@types/react": "^17.0.3",
-    "@types/react-dom": "^17.0.3",
-    "react": "^17.0.1",
-    "react-dom": "^17.0.1",
-    "react-scripts": "4.0.2",
-    "typescript": "^4.2.4",
-    "web-vitals": "^1.0.1"
+    "@picovoice/porcupine-react": "4.0.0",
+    "@picovoice/web-voice-processor": "~4.0.8",
+    "@types/node": "^18.11.9",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-scripts": "5.0.1",
+    "typescript": "^4.6.4"
+  },
+  "devDependencies": {
+    "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
+    "eslint": "^8.13.0"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "start": "node scripts/run_demo.js start",
+    "build": "node scripts/run_demo.js build",
+    "eject": "react-scripts eject",
+    "lint": "eslint ."
   },
   "eslintConfig": {
     "extends": [

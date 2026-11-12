@@ -2,7 +2,7 @@
 
 ## Porcupine
 
-Porcupine is is a highly accurate and lightweight wake word engine. It enables building always-listening voice-enabled applications using cutting edge voice AI.
+Porcupine is a highly accurate and lightweight wake word engine. It enables building always-listening voice-enabled applications using cutting edge voice AI.
 
 Porcupine is:
 
@@ -15,11 +15,9 @@ Porcupine is:
 
 To learn more about Porcupine, see the [product](https://picovoice.ai/products/porcupine/), [documentation](https://picovoice.ai/docs/), and [GitHub](https://github.com/Picovoice/porcupine/) pages.
 
-### Custom wake words
+## Compatibility
 
-Porcupine includes several built-in keywords, which are stored as `.ppn` files. To train custom PPN files, see the [Picovoice Console](https://picovoice.ai/console/).
-
-Unlike the built-in keywords, custom PPN files generated with the Picovoice Console carry restrictions including (but not limited to): training allowance, time limits, available platforms, and commercial usage.
+- Android 5.0+ (API 21+)
 
 ## Installation
 
@@ -28,15 +26,22 @@ Porcupine can be found on Maven Central. To include the package in your Android 
 ```groovy
 dependencies {
     // ...
-    implementation 'ai.picovoice:porcupine-android:1.9.0'
+    implementation 'ai.picovoice:porcupine-android:${LATEST_VERSION}'
 }
 ```
 
+## AccessKey
+
+Porcupine requires a valid Picovoice `AccessKey` at initialization. `AccessKey` acts as your credentials when using Porcupine SDKs.
+You can get your `AccessKey` for free. Make sure to keep your `AccessKey` secret.
+Signup or Login to [Picovoice Console](https://console.picovoice.ai/) to get your `AccessKey`.
+
 ## Permissions
 
-To enable recording with your Android device's microphone you must add the following line to your `AndroidManifest.xml` file:
+To enable AccessKey validation and recording with your Android device's microphone, you must add the following line to your `AndroidManifest.xml` file:
 ```xml
 <uses-permission android:name="android.permission.RECORD_AUDIO" />
+<uses-permission android:name="android.permission.INTERNET" />
 ```
 
 ## Usage
@@ -45,19 +50,22 @@ The module provides you with two levels of API to choose from depending on your 
 
 ### High-Level API
 
-[PorcupineManager](/binding/android/Porcupine/porcupine/src/main/java/ai/picovoice/porcupine/PorcupineManager.java) provides a high-level API that takes care of audio recording and wake word detection. This class is the quickest way to get started.
+[PorcupineManager](Porcupine/porcupine/src/main/java/ai/picovoice/porcupine/PorcupineManager.java) provides a high-level API that takes care of audio recording and wake word detection. This class is the quickest way to get started.
 
 To create an instance of PorcupineManager, use the PorcupineManager Builder:
 ```java
 import ai.picovoice.porcupine.*;
 
-try {    
+final String accessKey = "${ACCESS_KEY}";
+
+try {
     Porcupine.BuiltInKeyword[] keywords = new Porcupine.BuiltInKeyword[]{
         Porcupine.BuiltInKeyword.PICOVOICE,
         Porcupine.BuiltInKeyword.PORCUPINE
     }
 
     PorcupineManager porcupineManager = new PorcupineManager.Builder()
+                        .setAccessKey(accessKey)
                         .setKeywords(keywords)
                         .build(context, wakeWordCallback);
 } catch (PorcupineException e) { }
@@ -82,15 +90,20 @@ PorcupineManagerCallback wakeWordCallback = new PorcupineManagerCallback() {
 
 Available built-in keywords are accessible via the Porcupine.BuiltInKeyword enum.
 
-To create an instance of PorcupineManager that detects custom keywords, you can use the `setKeywordPaths()` builder argument instead:
+To create an instance of PorcupineManager that detects custom keywords, you can use the `setKeywordPaths()` builder argument instead. Custom keyword files (`.ppn`) are obtained from the [Picovoice Console](https://console.picovoice.ai/). Once you exported a custom keyword, add it to your Android assets folder (`src/main/assets`) and pass the relative path into the Builder.
+
+In this example our `.ppn` files are stored in our assets folder, under a subdirectory called `keywords`:
 ```java
-try {    
+final String accessKey = "${ACCESS_KEY}";
+
+try {
     String[] keywordPaths = new String[]{
-        "absolute/path/to/keyword/one.ppn",
-        "absolute/path/to/keyword/two.ppn"
+        "keywords/one.ppn",
+        "keywords/two.ppn"
     }
 
     PorcupineManager porcupineManager = new PorcupineManager.Builder()
+                        .setAccessKey(accessKey)
                         .setKeywordPaths(keywordPaths)
                         .build(context, wakeWordCallback);
 } catch (PorcupineException e) { }
@@ -98,28 +111,33 @@ try {
 
 In addition to custom keywords, you can override the default Porcupine english model file and/or keyword sensitivities.
 
-Sensitivity is the parameter that enables trading miss rate for the false alarm rate. It is a floating-point number within [0, 1]. A higher sensitivity reduces the miss rate at the cost of increased false alarm rate. 
+Sensitivity is the parameter that enables trading miss rate for the false alarm rate. It is a floating-point number within [0, 1]. A higher sensitivity reduces the miss rate at the cost of increased false alarm rate.
 
-The model file contains the parameters for the wake word engine. To change the language that Porcupine understands, you'll pass in a different model file.
+The model file (`.pv`) contains the parameters for the wake word engine. To change the language that Porcupine understands, you'll pass in a different model file. Like custom keywords, store the files in Android assets folder (`src/main/assets`) and pass in the relative path.
 
 There is also the option to pass an error callback, which will be invoked if an error is encountered while PorcupineManager is processing audio.
 
 These optional parameters can be set like so:
 ```java
-try {    
-    PorcupineManager porcupineManager = new PorcupineManager.Builder()                        
+final String accessKey = "${ACCESS_KEY}";
+
+try {
+    PorcupineManager porcupineManager = new PorcupineManager.Builder()
+                        .setAccessKey(accessKey)
                         .setKeywordPaths(keywordPaths)
-                        .setModelPath("absolute/path/to/porcupine_model.pv")
+                        .setModelPath("models/porcupine_model.pv")
                         .setSensitivities(new float[] { 0.6f, 0.35f })
                         .setErrorCallback(new PorcupineManagerErrorCallback() {
                             @Override
-                            public void invoke(PorcupineExcpetion e) {
+                            public void invoke(PorcupineException e) {
                                 // process error
                             }
                         })
                         .build(context, wakeWordCallback);
 } catch (PorcupineException e) { }
 ```
+
+Alternatively, if the model files are deployed to the device with a different method, the absolute paths to the files on device can be used.
 
 Once you have instantiated a PorcupineManager, you can start audio capture and wake word detection by calling:
 
@@ -142,15 +160,18 @@ porcupineManager.delete();
 
 ### Low-Level API
 
-[Porcupine](/binding/android/Porcupine/porcupine/src/main/java/ai/picovoice/porcupine/Porcupine.java) provides low-level access to the wake word engine for those who want to incorporate wake word detection into a already existing audio processing pipeline.
+[Porcupine](Porcupine/porcupine/src/main/java/ai/picovoice/porcupine/Porcupine.java) provides low-level access to the wake word engine for those who want to incorporate wake word detection into a already existing audio processing pipeline.
 
-`Porcupine` uses a Builder pattern to construct instances. 
+`Porcupine` uses a Builder pattern to construct instances.
 
 ```java
 import ai.picovoice.porcupine.*;
 
-try {    
+final String accessKey = "${ACCESS_KEY}";
+
+try {
     Porcupine porcupine = new Porcupine.Builder()
+                        .setAccessKey(accessKey)
                         .setKeyword(Porcupine.BuiltInKeyword.PICOVOICE)
                         .build(context);
 } catch (PorcupineException e) { }
@@ -184,32 +205,52 @@ porcupine.delete();
 
 ## Custom Wake Word Integration
 
-To add a custom wake word or model file to your application, add the files to your assets folder (`src/main/assets`) and then pass the path to the Porcupine Builder:
+To add a custom wake word or model file to your application, add the files to your assets folder (`src/main/assets`) and then pass the relative paths to the Porcupine Builder.
+
+In this example our files are located in the assets folder under subdirectory `picovoice_files`:
 
 ```java
-// in this example our files are located at '/assets/picovoice_files/keyword.ppn' and '/assets/picovoice_files/model.pv' 
-try {    
+final String accessKey = "${ACCESS_KEY}";
+
+try {
     Porcupine porcupine = new Porcupine.Builder()
+                        .setAccessKey(accessKey)
                         .setKeywordPath("picovoice_files/keyword.ppn")
                         .setModelPath("picovoice_files/model.pv")
                         .build(context);
 } catch (PorcupineException e) { }
 ```
+Alternatively, if the keyword file is deployed to the device with a different method, the absolute path to the file on device can be used.
 
 ## Non-English Wake Words
 
-In order to detect non-English wake words you need to use the corresponding model file. The model files for all supported languages are available [here](/lib/common).
+In order to detect non-English wake words you need to use the corresponding model file. The model files for all supported languages are available [here](../../lib/common).
+
+## Train Models over API
+
+You can train models over API without going to the console:
+
+```java
+Porcupine.trainWakeWordFromPhrase(
+  "${ACCESS_KEY}",     // AccessKey obtained from Picovoice Console (https://console.picovoice.ai/)
+  "${WRITE_PATH}",     // Custom path/key used to store the trained model in IndexedDB
+  "${LANGUAGE}",       // Two-character language code
+  "${PHRASE}"         // Phrase to create a wake word from
+);
+```
+
+Check [Porcupine Model API](https://picovoice.ai/docs/model-api/porcupine/) docs for a list of supported languages and platforms.
 
 ## Demo Apps
 
-For example usage refer to
-[Activity demo](/demo/android/Activity) or [Service demo](/demo/android/Service).
+For example usage refer to the
+[Activity demo](../../demo/android/Activity), [Service demo](../../demo/android/Service) or [STT demo](../../demo/android/STT).
 
-## Resource Usage 
+## Resource Usage
 
-The following profile graph was captured running the [Porcupine Activity demo](/demo/android/Activity/) on a Google Pixel 3:
+The following profile graph was captured running the [Porcupine Activity demo](../../demo/android/Activity) on a Google Pixel 3:
 
-![](/binding/android/android_profiling.gif)
+![](android_profiling.gif)
 
 - CPU <= 1%
 - Battery Usage <= LOW

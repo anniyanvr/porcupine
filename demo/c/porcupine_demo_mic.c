@@ -1,5 +1,5 @@
 /*
-    Copyright 2018-2021 Picovoice Inc.
+    Copyright 2018-2025 Picovoice Inc.
 
     You may not use this file except in compliance with the license. A copy of the license is located in the "LICENSE"
     file accompanying this source.
@@ -9,45 +9,25 @@
     specific language governing permissions and limitations under the License.
 */
 
-#if !defined(_WIN32) && !defined(_WIN64)
-
-#include <dlfcn.h>
-
-#endif
-
+#include <getopt.h>
+#include <math.h>
+#include <stdbool.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #if defined(_WIN32) || defined(_WIN64)
 
 #include <windows.h>
 
+#else
+
+#include <dlfcn.h>
+
 #endif
 
-#pragma GCC diagnostic push
-
-#pragma GCC diagnostic ignored "-Wunused-result"
-
-#define MINIAUDIO_IMPLEMENTATION
-
-#include "miniaudio/miniaudio.h"
-
-#pragma GCC diagnostic pop
-
 #include "pv_porcupine.h"
-
-typedef struct {
-    int16_t *buffer;
-    int32_t max_size;
-    int32_t filled;
-} frame_buffer_t;
-
-typedef struct {
-    frame_buffer_t frame_buffer;
-    const char *(*pv_status_to_string_func)(pv_status_t);
-    pv_status_t (*pv_porcupine_process_func)(pv_porcupine_t *, const int16_t *, int32_t *);
-    pv_porcupine_t *porcupine;
-} pv_porcupine_data_t;
+#include "pv_recorder.h"
 
 static volatile bool is_interrupted = false;
 
@@ -62,7 +42,6 @@ static void *open_dl(const char *dl_path) {
     return dlopen(dl_path, RTLD_NOW);
 
 #endif
-
 }
 
 static void *load_symbol(void *handle, const char *symbol) {
@@ -76,7 +55,6 @@ static void *load_symbol(void *handle, const char *symbol) {
     return dlsym(handle, symbol);
 
 #endif
-
 }
 
 static void close_dl(void *handle) {
@@ -90,7 +68,6 @@ static void close_dl(void *handle) {
     dlclose(handle);
 
 #endif
-
 }
 
 static void print_dl_error(const char *message) {
@@ -104,7 +81,35 @@ static void print_dl_error(const char *message) {
     fprintf(stderr, "%s with '%s'.\n", message, dlerror());
 
 #endif
+}
 
+static struct option long_options[] = {
+        {"show_audio_devices",      no_argument,       NULL, 's'},
+        {"show_inference_devices",  no_argument,       NULL, 'i'},
+        {"library_path",            required_argument, NULL, 'l'},
+        {"model_path",              required_argument, NULL, 'm'},
+        {"device",                  required_argument, NULL, 'y'},
+        {"keyword_path",            required_argument, NULL, 'k'},
+        {"sensitivity",             required_argument, NULL, 't'},
+        {"access_key",              required_argument, NULL, 'a'},
+        {"audio_device_index",      required_argument, NULL, 'd'}
+};
+
+static void print_usage(const char *program_name) {
+    fprintf(stderr,
+            "Usage : %s -l LIBRARY_PATH -m MODEL_PATH -k KEYWORD_PATH -t SENSITIVITY -a ACCESS_KEY -d "
+            "AUDIO_DEVICE_INDEX\n"
+            "        %s [-s, --show_audio_devices]\n"
+            "        %s [-i, --show_inference_devices] -l LIBRARY_PATH\n",
+            program_name,
+            program_name,
+            program_name);
+}
+
+void print_error_message(char **message_stack, int32_t message_stack_depth) {
+    for (int32_t i = 0; i < message_stack_depth; i++) {
+        fprintf(stderr, "  [%d] %s\n", i, message_stack[i]);
+    }
 }
 
 void interrupt_handler(int _) {
@@ -112,212 +117,370 @@ void interrupt_handler(int _) {
     is_interrupted = true;
 }
 
-static void print_usage(const char *program) {
-    fprintf(stderr, "usage : %s library_path model_path keyword_path sensitivity audio_device_index\n"
-                    "        %s --show_audio_devices\n", program, program);
+void show_audio_devices(void) {
+    char **devices = NULL;
+    int32_t count = 0;
+
+    pv_recorder_status_t status = pv_recorder_get_available_devices(&count, &devices);
+    if (status != PV_RECORDER_STATUS_SUCCESS) {
+        fprintf(stderr, "Failed to get audio devices with: %s.\n", pv_recorder_status_to_string(status));
+        exit(EXIT_FAILURE);
+    }
+
+    fprintf(stdout, "Printing devices...\n");
+    for (int32_t i = 0; i < count; i++) {
+        fprintf(stdout, "index: %d, name: %s\n", i, devices[i]);
+    }
+
+    pv_recorder_free_available_devices(count, devices);
 }
 
-static void porcupine_process_callback(const pv_porcupine_data_t *pv_porcupine_data, const int16_t *pcm) {
-    int32_t keyword_index = -1;
-    pv_status_t status = pv_porcupine_data->pv_porcupine_process_func(pv_porcupine_data->porcupine, pcm,
-                                                                      &keyword_index);
+void print_inference_devices(const char *library_path) {
+    void *dl_handle = open_dl(library_path);
+    if (!dl_handle) {
+        fprintf(stderr, "Failed to open library at '%s'.\n", library_path);
+        exit(EXIT_FAILURE);
+    }
+
+    const char *(*pv_status_to_string_func)(pv_status_t) = load_symbol(dl_handle, "pv_status_to_string");
+    if (!pv_status_to_string_func) {
+        print_dl_error("Failed to load 'pv_status_to_string'");
+        exit(EXIT_FAILURE);
+    }
+
+    pv_status_t (*pv_porcupine_list_hardware_devices_func)(char ***, int32_t *) =
+    load_symbol(dl_handle, "pv_porcupine_list_hardware_devices");
+    if (!pv_porcupine_list_hardware_devices_func) {
+        print_dl_error("failed to load `pv_porcupine_list_hardware_devices`");
+        exit(EXIT_FAILURE);
+    }
+
+    pv_status_t (*pv_porcupine_free_hardware_devices_func)(char **, int32_t) =
+        load_symbol(dl_handle, "pv_porcupine_free_hardware_devices");
+    if (!pv_porcupine_free_hardware_devices_func) {
+        print_dl_error("failed to load `pv_porcupine_free_hardware_devices`");
+        exit(EXIT_FAILURE);
+    }
+
+    pv_status_t (*pv_get_error_stack_func)(char ***, int32_t *) =
+        load_symbol(dl_handle, "pv_get_error_stack");
+    if (!pv_get_error_stack_func) {
+        print_dl_error("failed to load 'pv_get_error_stack_func'");
+        exit(EXIT_FAILURE);
+    }
+
+    void (*pv_free_error_stack_func)(char **) =
+        load_symbol(dl_handle, "pv_free_error_stack");
+    if (!pv_free_error_stack_func) {
+        print_dl_error("failed to load 'pv_free_error_stack_func'");
+        exit(EXIT_FAILURE);
+    }
+
+    char **message_stack = NULL;
+    int32_t message_stack_depth = 0;
+    pv_status_t error_status = PV_STATUS_RUNTIME_ERROR;
+
+    char **hardware_devices = NULL;
+    int32_t num_hardware_devices = 0;
+    pv_status_t status = pv_porcupine_list_hardware_devices_func(&hardware_devices, &num_hardware_devices);
     if (status != PV_STATUS_SUCCESS) {
-        fprintf(stderr, "'pv_porcupine_process' failed with '%s'\n",
-                pv_porcupine_data->pv_status_to_string_func(status));
-        exit(1);
+        fprintf(
+                stderr,
+                "Failed to list hardware devices with `%s`.\n",
+                pv_status_to_string_func(status));
+        error_status = pv_get_error_stack_func(&message_stack, &message_stack_depth);
+        if (error_status != PV_STATUS_SUCCESS) {
+            fprintf(
+                    stderr,
+                    ".\nUnable to get porcupine error state with '%s'.\n",
+                    pv_status_to_string_func(error_status));
+            exit(EXIT_FAILURE);
+        }
+
+        if (message_stack_depth > 0) {
+            fprintf(stderr, ":\n");
+            print_error_message(message_stack, message_stack_depth);
+            pv_free_error_stack_func(message_stack);
+        }
+        exit(EXIT_FAILURE);
     }
-    if (keyword_index != -1) {
-        fprintf(stdout, "keyword detected\n");
-        fflush(stdout);
+
+    for (int32_t i = 0; i < num_hardware_devices; i++) {
+        fprintf(stdout, "%s\n", hardware_devices[i]);
     }
+    pv_porcupine_free_hardware_devices_func(hardware_devices, num_hardware_devices);
+    close_dl(dl_handle);
 }
 
-static void mic_callback(ma_device *device, void *output, const void *input, ma_uint32 frame_count) {
-    (void) output;
-
-    pv_porcupine_data_t *pv_porcupine_data = (pv_porcupine_data_t *) device->pUserData;
-
-    frame_buffer_t *frame_buffer = &pv_porcupine_data->frame_buffer;
-
-    int16_t *buffer_ptr = &frame_buffer->buffer[frame_buffer->filled];
-    int16_t *input_ptr = (int16_t *) input;
-
-    int32_t processed_frames = 0;
-
-    while (processed_frames < frame_count) {
-        const int32_t remaining_frames = (int32_t) frame_count - processed_frames;
-        const int32_t available_frames = frame_buffer->max_size - frame_buffer->filled;
-
-        if (available_frames > 0) {
-            const int32_t frames_to_read = (remaining_frames < available_frames) ? remaining_frames : available_frames;
-
-            memcpy(buffer_ptr, input_ptr, frames_to_read * sizeof(int16_t));
-            buffer_ptr += frames_to_read;
-            input_ptr += frames_to_read;
-
-            processed_frames += frames_to_read;
-            frame_buffer->filled += frames_to_read;
-        } else {
-            porcupine_process_callback(pv_porcupine_data, frame_buffer->buffer);
-
-            buffer_ptr = frame_buffer->buffer;
-            frame_buffer->filled = 0;
-        }
-    }
-}
-
-int main(int argc, char *argv[]) {
-    if ((argc != 2) && (argc != 6)) {
-        print_usage(argv[0]);
-        exit(1);
-    }
-
-    ma_context context;
-    ma_result result;
-
-    result = ma_context_init(NULL, 0, NULL, &context);
-    if (result != MA_SUCCESS) {
-        fprintf(stderr, "failed to initialize the input audio device list.\n");
-        exit(1);
-    }
-
-    ma_device_info *capture_info;
-    ma_uint32 capture_count;
-
-    result = ma_context_get_devices(&context, NULL, NULL, &capture_info, &capture_count);
-    if (result != MA_SUCCESS) {
-        fprintf(stderr, "failed to get the available input devices.\n");
-        exit(1);
-    }
-
-    if (argc == 2) {
-        if (strcmp(argv[1], "--show_audio_devices") == 0) {
-            for (ma_uint32 device = 0; device < capture_count; device++) {
-                fprintf(stdout, "index: %d, name: %s\n", device, capture_info[device].name);
-            }
-            return 0;
-        } else {
-            print_usage(argv[0]);
-            exit(1);
-        }
-    }
-
+int picovoice_main(int argc, char *argv[]) {
     signal(SIGINT, interrupt_handler);
 
-    const char *library_path = argv[1];
-    const char *model_path = argv[2];
-    const char *keyword_path = argv[3];
-    const float sensitivity = strtod(argv[4], NULL);
-    const int32_t device_index = strtol(argv[5], NULL, 10);
+    const char *library_path = NULL;
+    const char *model_path = NULL;
+    char *device = "best";
+    bool show_inference_devices = false;
+    const char *keyword_path = NULL;
+    float sensitivity = 0.5f;
+    const char *access_key = NULL;
+    int32_t device_index = -1;
 
-    if (device_index >= capture_count) {
-        fprintf(stdout, "no device available given audio device index.\n");
-        exit(1);
+    int c;
+    while ((c = getopt_long(argc, argv, "sl:m:y:ik:t:a:d:", long_options, NULL)) != -1) {
+        switch (c) {
+            case 's':
+                show_audio_devices();
+                return EXIT_SUCCESS;
+            case 'l':
+                library_path = optarg;
+                break;
+            case 'm':
+                model_path = optarg;
+                break;
+            case 'y':
+                device = optarg;
+                break;
+            case 'i':
+                show_inference_devices = true;
+                break;
+            case 'k':
+                keyword_path = optarg;
+                break;
+            case 't':
+                sensitivity = strtof(optarg, NULL);
+                break;
+            case 'a':
+                access_key = optarg;
+                break;
+            case 'd':
+                device_index = (int32_t) strtol(optarg, NULL, 10);
+                break;
+            default:
+                exit(EXIT_FAILURE);
+        }
+    }
+
+    if (show_inference_devices) {
+        if (!library_path) {
+            fprintf(stderr, "`library_path` is required to view available inference devices.\n");
+            print_usage(argv[0]);
+            exit(EXIT_FAILURE);
+        }
+
+        print_inference_devices(library_path);
+        return EXIT_SUCCESS;
+    }
+    
+    if (!library_path || !model_path || !keyword_path || !access_key) {
+        print_usage(argv[0]);
+        exit(EXIT_FAILURE);
     }
 
     void *porcupine_library = open_dl(library_path);
-
     if (!porcupine_library) {
         fprintf(stderr, "failed to open library.\n");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     const char *(*pv_status_to_string_func)(pv_status_t) = load_symbol(porcupine_library, "pv_status_to_string");
     if (!pv_status_to_string_func) {
         print_dl_error("failed to load 'pv_status_to_string'");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     int32_t (*pv_sample_rate_func)() = load_symbol(porcupine_library, "pv_sample_rate");
     if (!pv_sample_rate_func) {
         print_dl_error("failed to load 'pv_sample_rate'");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
-    pv_status_t (*pv_porcupine_init_func)(const char *, int32_t, const char *const *, const float *, pv_porcupine_t **)
-    = load_symbol(porcupine_library, "pv_porcupine_init");
+    pv_status_t (*pv_porcupine_init_func)(const char *, const char *, const char *, int32_t, const char *const *, const float *, pv_porcupine_t **) =
+            load_symbol(porcupine_library, "pv_porcupine_init");
     if (!pv_porcupine_init_func) {
         print_dl_error("failed to load 'pv_porcupine_init'");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     void (*pv_porcupine_delete_func)(pv_porcupine_t *) = load_symbol(porcupine_library, "pv_porcupine_delete");
     if (!pv_porcupine_delete_func) {
         print_dl_error("failed to load 'pv_porcupine_delete'");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
-    pv_status_t (*pv_porcupine_process_func)(pv_porcupine_t *, const int16_t *, int32_t *)
-    = load_symbol(porcupine_library, "pv_porcupine_process");
+    pv_status_t (*pv_porcupine_process_func)(pv_porcupine_t *, const int16_t *, int32_t *) = load_symbol(porcupine_library, "pv_porcupine_process");
     if (!pv_porcupine_process_func) {
         print_dl_error("failed to load 'pv_porcupine_process'");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     int32_t (*pv_porcupine_frame_length_func)() = load_symbol(porcupine_library, "pv_porcupine_frame_length");
     if (!pv_porcupine_frame_length_func) {
         print_dl_error("failed to load 'pv_porcupine_frame_length'");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
+
+    const char *(*pv_porcupine_version_func)() = load_symbol(porcupine_library, "pv_porcupine_version");
+    if (!pv_porcupine_version_func) {
+        print_dl_error("failed to load 'pv_porcupine_version'");
+        exit(EXIT_FAILURE);
+    }
+
+    pv_status_t (*pv_get_error_stack_func)(char ***, int32_t *) = load_symbol(porcupine_library, "pv_get_error_stack");
+    if (!pv_get_error_stack_func) {
+        print_dl_error("failed to load 'pv_get_error_stack_func'");
+        exit(EXIT_FAILURE);
+    }
+
+    void (*pv_free_error_stack_func)(char **) = load_symbol(porcupine_library, "pv_free_error_stack");
+    if (!pv_free_error_stack_func) {
+        print_dl_error("failed to load 'pv_free_error_stack_func'");
+        exit(EXIT_FAILURE);
+    }
+
+    char **message_stack = NULL;
+    int32_t message_stack_depth = 0;
+    pv_status_t error_status = PV_STATUS_RUNTIME_ERROR;
 
     pv_porcupine_t *porcupine = NULL;
-    pv_status_t status = pv_porcupine_init_func(model_path, 1, &keyword_path, &sensitivity, &porcupine);
-    if (status != PV_STATUS_SUCCESS) {
-        fprintf(stderr, "'pv_porcupine_init' failed with '%s'\n", pv_status_to_string_func(status));
-        exit(1);
+    pv_status_t porcupine_status = pv_porcupine_init_func(
+            access_key,
+            model_path,
+            device,
+            1,
+            &keyword_path,
+            &sensitivity,
+            &porcupine);
+    if (porcupine_status != PV_STATUS_SUCCESS) {
+        fprintf(stderr, "'pv_porcupine_init' failed with '%s'", pv_status_to_string_func(porcupine_status));
+        error_status = pv_get_error_stack_func(&message_stack, &message_stack_depth);
+        if (error_status != PV_STATUS_SUCCESS) {
+            fprintf(stderr, ".\nUnable to get Porcupine error state with '%s'.\n", pv_status_to_string_func(error_status));
+            exit(EXIT_FAILURE);
+        }
+
+        if (message_stack_depth > 0) {
+            fprintf(stderr, ":\n");
+            print_error_message(message_stack, message_stack_depth);
+            pv_free_error_stack_func(message_stack);
+        } else {
+            fprintf(stderr, ".\n");
+        }
+
+        exit(EXIT_FAILURE);
     }
+
+    fprintf(stdout, "V%s\n\n", pv_porcupine_version_func());
 
     const int32_t frame_length = pv_porcupine_frame_length_func();
-
-    pv_porcupine_data_t pv_porcupine_data;
-    pv_porcupine_data.frame_buffer.buffer = malloc(frame_length * sizeof(int16_t));
-    if (!pv_porcupine_data.frame_buffer.buffer) {
-        fprintf(stderr, "failed to allocate memory using 'malloc'\n");
-        exit(1);
+    pv_recorder_t *recorder = NULL;
+    pv_recorder_status_t recorder_status = pv_recorder_init(frame_length, device_index, 100, &recorder);
+    if (recorder_status != PV_RECORDER_STATUS_SUCCESS) {
+        fprintf(stderr, "Failed to initialize device with %s.\n", pv_recorder_status_to_string(recorder_status));
+        exit(EXIT_FAILURE);
     }
 
-    pv_porcupine_data.frame_buffer.max_size = frame_length;
-    pv_porcupine_data.frame_buffer.filled = 0;
+    const char *selected_device = pv_recorder_get_selected_device(recorder);
+    fprintf(stdout, "Selected device: %s.\n", selected_device);
 
-    pv_porcupine_data.pv_status_to_string_func = pv_status_to_string_func;
-    pv_porcupine_data.pv_porcupine_process_func = pv_porcupine_process_func;
-    pv_porcupine_data.porcupine = porcupine;
-
-    ma_device_config device_config;
-    ma_device device;
-
-    device_config = ma_device_config_init(ma_device_type_capture);
-    device_config.capture.format = ma_format_s16;
-    device_config.capture.channels = 1;
-    device_config.capture.pDeviceID = &capture_info[device_index].id;
-    device_config.sampleRate = ma_standard_sample_rate_16000;
-    device_config.dataCallback = mic_callback;
-    device_config.pUserData = &pv_porcupine_data;
-
-    result = ma_device_init(&context, &device_config, &device);
-    if (result != MA_SUCCESS) {
-        fprintf(stderr, "failed to initialize capture device.\n");
-        exit(1);
+    fprintf(stdout, "Start recording...\n");
+    recorder_status = pv_recorder_start(recorder);
+    if (recorder_status != PV_RECORDER_STATUS_SUCCESS) {
+        fprintf(stderr, "Failed to start device with %s.\n", pv_recorder_status_to_string(recorder_status));
+        exit(EXIT_FAILURE);
     }
 
-    result = ma_device_start(&device);
-    if (result != MA_SUCCESS) {
-        fprintf(stderr, "failed to start device.\n");
-        exit(1);
+    int16_t *pcm = malloc(frame_length * sizeof(int16_t));
+    if (!pcm) {
+        fprintf(stderr, "Failed to allocate pcm memory.\n");
+        exit(EXIT_FAILURE);
     }
 
-    fprintf(stdout, "Using device: %s\n", device.capture.name);
-    fflush(stdout);
+    while (!is_interrupted) {
+        recorder_status = pv_recorder_read(recorder, pcm);
+        if (recorder_status != PV_RECORDER_STATUS_SUCCESS) {
+            fprintf(stderr, "Failed to read with %s.\n", pv_recorder_status_to_string(recorder_status));
+            exit(EXIT_FAILURE);
+        }
 
-    while (!is_interrupted) {}
+        int32_t keyword_index = -1;
+        porcupine_status = pv_porcupine_process_func(porcupine, pcm, &keyword_index);
+        if (porcupine_status != PV_STATUS_SUCCESS) {
+            fprintf(stderr, "'pv_porcupine_process' failed with '%s'", pv_status_to_string_func(porcupine_status));
+            error_status = pv_get_error_stack_func(&message_stack, &message_stack_depth);
+            if (error_status != PV_STATUS_SUCCESS) {
+                fprintf(stderr, ".\nUnable to get Porcupine error state with '%s'.\n", pv_status_to_string_func(error_status));
+                exit(EXIT_FAILURE);
+            }
 
-    ma_device_uninit(&device);
-    ma_context_uninit(&context);
+            if (message_stack_depth > 0) {
+                fprintf(stderr, ":\n");
+                print_error_message(message_stack, message_stack_depth);
+                pv_free_error_stack_func(message_stack);
+            } else {
+                fprintf(stderr, ".\n");
+            }
+            exit(EXIT_FAILURE);
+        }
 
-    free(pv_porcupine_data.frame_buffer.buffer);
+        if (keyword_index != -1) {
+            fprintf(stdout, "keyword detected\n");
+            fflush(stdout);
+        }
+    }
+    fprintf(stdout, "\n");
+
+    recorder_status = pv_recorder_stop(recorder);
+    if (recorder_status != PV_RECORDER_STATUS_SUCCESS) {
+        fprintf(stderr, "Failed to stop device with %s.\n", pv_recorder_status_to_string(recorder_status));
+        exit(EXIT_FAILURE);
+    }
+
+    free(pcm);
+    pv_recorder_delete(recorder);
     pv_porcupine_delete_func(porcupine);
-
     close_dl(porcupine_library);
 
-    return 0;
+    return EXIT_SUCCESS;
+}
+
+int main(int argc, char *argv[]) {
+
+#if defined(_WIN32) || defined(_WIN64)
+
+#define UTF8_COMPOSITION_FLAG (0)
+#define NULL_TERMINATED       (-1)
+
+    LPWSTR *wargv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (wargv == NULL) {
+        fprintf(stderr, "CommandLineToArgvW failed\n");
+        exit(EXIT_FAILURE);
+    }
+
+    char *utf8_argv[argc];
+
+    for (int i = 0; i < argc; ++i) {
+        // WideCharToMultiByte: https://docs.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-widechartomultibyte
+        int arg_chars_num = WideCharToMultiByte(CP_UTF8, UTF8_COMPOSITION_FLAG, wargv[i], NULL_TERMINATED, NULL, 0, NULL, NULL);
+        utf8_argv[i] = (char *) malloc(arg_chars_num * sizeof(char));
+        if (!utf8_argv[i]) {
+            fprintf(stderr, "failed to to allocate memory for converting args");
+        }
+        WideCharToMultiByte(CP_UTF8, UTF8_COMPOSITION_FLAG, wargv[i], NULL_TERMINATED, utf8_argv[i], arg_chars_num, NULL, NULL);
+    }
+
+    LocalFree(wargv);
+    argv = utf8_argv;
+
+#endif
+
+    int result = picovoice_main(argc, argv);
+
+#if defined(_WIN32) || defined(_WIN64)
+
+    for (int i = 0; i < argc; ++i) {
+        free(utf8_argv[i]);
+    }
+
+#endif
+
+    return result;
 }

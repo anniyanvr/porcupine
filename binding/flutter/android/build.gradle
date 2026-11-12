@@ -1,33 +1,58 @@
 group 'ai.picovoice.flutter.porcupine'
-version '1.0'
+version '4.0.0'
 
 buildscript {
     repositories {
         google()
-        jcenter()
+        mavenCentral()
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:3.5.0'
+        classpath 'com.android.tools.build:gradle:7.4.2'
     }
 }
 
 rootProject.allprojects {
     repositories {
         google()
-        jcenter()
+        mavenCentral()
     }
 }
 
 apply plugin: 'com.android.library'
 
 android {
-    compileSdkVersion 29
+    def agpVersion = com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION
+    if (agpVersion.tokenize('.')[0].toInteger() >= 7) {
+        namespace "ai.picovoice.flutter.porcupine"
+    }
+
+    if (agpVersion.tokenize('.')[0].toInteger() >= 8) {
+        buildFeatures {
+            buildConfig = true
+        }
+    }
+
+    compileSdkVersion 31
 
     defaultConfig {
-        minSdkVersion 16
+        minSdkVersion 21
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
     }
     lintOptions {
-        disable 'InvalidPackage'
+        disable 'GradleCompatible'
     }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    implementation 'ai.picovoice:porcupine-android:4.0.0'
 }

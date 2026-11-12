@@ -2,7 +2,7 @@
 
 ## Porcupine
 
-Porcupine is is a highly accurate and lightweight wake word engine. It enables building always-listening voice-enabled applications using cutting edge voice AI.
+Porcupine is a highly accurate and lightweight wake word engine. It enables building always-listening voice-enabled applications using cutting edge voice AI.
 
 Porcupine is:
 
@@ -15,22 +15,16 @@ Porcupine is:
 
 To learn more about Porcupine, see the [product](https://picovoice.ai/products/porcupine/), [documentation](https://picovoice.ai/docs/), and [GitHub](https://github.com/Picovoice/porcupine/) pages.
 
-### Custom wake words
-
-Porcupine includes several built-in keywords, which are stored as `.ppn` files. To train custom PPN files, see the [Picovoice Console](https://picovoice.ai/console/).
-
-Unlike the built-in keywords, custom PPN files generated with the Picovoice Console carry restrictions including (but not limited to): training allowance, time limits, available platforms, and commercial usage.
-
 ## Compatibility
 
-This binding is for running Porcupine on **React Native 0.62.2+** on the following platforms:
+This binding is for running Porcupine on **React Native 0.73+** on the following platforms:
 
-- Android 4.1+ (API 16+)
-- iOS 9.0+
+- Android 5.0+ (API 21+)
+- iOS 16.0+
 
 ## Installation
 
-To start install be sure you have installed yarn and cocoapods. Then add these two native modules to your react-native project.
+To start install be sure you have installed yarn and CocoaPods. Then add these two native modules to your react-native project.
 
 ```console
 yarn add @picovoice/react-native-voice-processor
@@ -48,7 +42,13 @@ Link the iOS package
 cd ios && pod install && cd ..
 ```
 
-**NOTE**: Due to a limitation in React Native CLI autolinking, these two native modules cannot be included as transitive depedencies. If you are creating a module that depends on porcupine-react-native and/or react-native-voice-processor, you will have to list these as peer dependencies and require developers to install them alongside.
+**NOTE**: Due to a limitation in React Native CLI auto-linking, these two native modules cannot be included as transitive dependencies. If you are creating a module that depends on porcupine-react-native and/or react-native-voice-processor, you will have to list these as peer dependencies and require developers to install them alongside.
+
+## AccessKey
+
+Porcupine requires a valid Picovoice `AccessKey` at initialization. `AccessKey` acts as your credentials when using Porcupine SDKs.
+You can get your `AccessKey` for free. Make sure to keep your `AccessKey` secret.
+Signup or Login to [Picovoice Console](https://console.picovoice.ai/) to get your `AccessKey`.
 
 ## Permissions
 
@@ -63,9 +63,11 @@ On iOS, open your Info.plist and add the following line:
 On Android, open your AndroidManifest.xml and add the following line:
 ```xml
 <uses-permission android:name="android.permission.RECORD_AUDIO" />
+<uses-permission android:name="android.permission.INTERNET" />
 ```
 
 Finally, in your app JS code, be sure to check for user permission consent before proceeding with audio capture:
+
 ```javascript
 let recordAudioRequest;
 if (Platform.OS == 'android') {
@@ -105,17 +107,22 @@ The module provides you with two levels of API to choose from depending on your 
 
 #### High-Level API
 
-[PorcupineManager](/binding/react-native/src/porcupinemanager.tsx) provides a high-level API that takes care of
+[PorcupineManager](src/porcupine_manager.tsx) provides a high-level API that takes care of
 audio recording. This class is the quickest way to get started.
 
-Using the constructor `PorcupineManager.fromKeywords` will create an instance of the PorcupineManager
+Using the constructor `PorcupineManager.fromBuiltInKeywords` will create an instance of the PorcupineManager
 using one or more of the built-in keywords.
+
 ```javascript
-async createPorcupineManager(){
-    try{
-        this._porcupineManager = await PorcupineManager.fromKeywords(
-            ["picovoice", "porcupine"],
-            detectionCallback);
+const accessKey = "${ACCESS_KEY}";  // AccessKey obtained from Picovoice Console (https://console.picovoice.ai/)
+
+async createPorcupineManager() {
+    try {
+        this._porcupineManager = await PorcupineManager.fromBuiltInKeywords(
+            accessKey,
+            [BuiltInKeywords.Picovoice, BuiltInKeywords.Porcupine],
+            detectionCallback,
+            processErrorCallback);
     } catch (err) {
         // handle error
     }
@@ -127,37 +134,59 @@ The `detectionCallback` parameter is a function that you want to execute when Po
 The function should accept a single integer, keywordIndex, which specifies which wake word has been detected.
 
 ```javascript
-detectionCallback(keywordIndex){
-    if(keywordIndex === 0){
+detectionCallback(keywordIndex) {
+    if (keywordIndex === 0) {
         // picovoice detected
     }
-    else if (keywordIndex === 1){
+    else if (keywordIndex === 1) {
         // porcupine detected
     }
 }
 ```
 
-Available built-in keywords are stored in the constants `PorcupineManager.KEYWORDS` and `Porcupine.KEYWORDS`.
+The `processErrorCallback` parameter is a function that you want to execute when Porcupine has detected an error while processing audio.
+The function should accept an error type, the error which is thrown. This callback is optional.
+
+```javascript
+processErrorCallback(error) {
+    console.error(error);
+}
+```
+
+Available built-in keywords are stored in the `BuiltInKeywords` enum.
 
 To create an instance of PorcupineManager that detects custom keywords, you can use the `PorcupineManager.fromKeywordPaths`
 static constructor and provide the paths to the `.ppn` file(s).
+
 ```javascript
-this._porcupineManager = await PorcupineManager.fromKeywordPaths(["/path/to/keyword.ppn"], detectionCallback);
+const accessKey = "${ACCESS_KEY}"
+
+this._porcupineManager = await PorcupineManager.fromKeywordPaths(
+    accessKey,
+    ["/path/to/keyword.ppn"],
+    detectionCallback);
 ```
 
-To add custom keywords to your app, copy the ppn files to your platform's asset folder and get the paths using [react-native-fs](https://www.npmjs.com/package/react-native-fs). An example of this can be found in our [Rhino demo](https://github.com/Picovoice/rhino/tree/master/demo/react-native).
+To add a custom wake word to your React Native application you'll need to add the `.ppn` file to your platform projects. Android models must be added to `./android/app/src/main/assets/`, while iOS models can be added anywhere under `./ios`, but must be included as a bundled resource in your iOS (i.e. add via XCode) project. The paths used as initialization arguments are relative to these device-specific directories.
 
 In addition to custom keywords, you can override the default Porcupine model file and/or keyword sensitivities.
 These optional parameters can be passed in like so:
+
 ```javascript
+const accessKey = "${ACCESS_KEY}"
+
 this._porcupineManager = await PorcupineManager.fromKeywordPaths(
-    ["/path/to/keyword/file/one.ppn", "/path/to/keyword/file/two.ppn"],
+    accessKey,
+    ["/path/to/keyword/one.ppn", "/path/to/keyword/two.ppn"],
     detectionCallback,
-    'path/to/model/file.pv',
+    processErrorCallback,
+    'path/to/model.pv',
     [0.25, 0.6]);
 ```
 
-Once you have instantiated a PorcupineManager, you can start audio capture and wake word detection by calling:
+Alternatively, if the model files are deployed to the device with a different method, the absolute paths to the files on device can be used.
+
+Once you have instantiated a `PorcupineManager`, you can start audio capture and wake word detection by calling:
 
 ```javascript
 let didStart = await this._porcupineManager.start();
@@ -169,27 +198,28 @@ And then stop it by calling:
 let didStop = await this._porcupineManager.stop();
 ```
 
-Once the app is done with using PorcupineManager, be sure you explicitly release the resources allocated to Porcupine:
+Once the app is done with using `PorcupineManager`, be sure you explicitly release the resources allocated to Porcupine:
 ```javascript
 this._porcupineManager.delete();
 ```
 
-As you may have noticed, there is no need to deal with audio capture to enable wake word detection with PorcupineManager.
-This is because it uses our
+With `PorcupineManager`, the
 [@picovoice/react-native-voice-processor](https://github.com/Picovoice/react-native-voice-processor/)
-module to capture frames of audio and automatically pass it to the wake word engine.
+module handles audio capture and automatically passes it to the wake word engine.
 
 #### Low-Level API
 
-[Porcupine](/binding/react-native/src/porcupine.tsx) provides low-level access to the wake word engine for those
-who want to incorporate wake word detection into a already existing audio processing pipeline.
+[Porcupine](https://github.com/Picovoice/porcupine/blob/master/binding/react-native/src/porcupine.tsx) provides low-level access to the wake word engine for those
+who want to incorporate wake word detection into an already existing audio processing pipeline.
 
-`Porcupine` also has `fromKeywords` and `fromKeywordPaths` static constructors.
+`Porcupine` also has `fromBuiltInKeywords` and `fromKeywordPaths` static constructors.
 
 ```javascript
+const accessKey = "${ACCESS_KEY}"  // AccessKey obtained from Picovoice Console (https://console.picovoice.ai/)
+
 async createPorcupine(){
     try{
-        this._porcupine = await Porcupine.fromKeywords(["picovoice"]);
+        this._porcupine = await Porcupine.fromBuiltInKeywords(accessKey, [BuiltInKeywords.PICOVOICE]);
     } catch (err) {
         // handle error
     }
@@ -222,29 +252,54 @@ this._porcupine.delete();
 
 ## Custom Wake Word Integration
 
-To add a custom wake word to your React Native application you'll need to add the ppn file to your platform projects. Android models must be added to `./android/app/src/main/res/raw/`, while iOS models can be added anywhere under `./ios`, but must be included as a bundled resource in your iOS project. Then in your app code, using the [react-native-fs](https://www.npmjs.com/package/react-native-fs) package, retrieve the files like so:
-```javascript
-const RNFS = require('react-native-fs');
+To add a custom wake word to your React Native application you'll need to add the `.ppn` file to your platform projects.
 
-let wakeWordName = 'keyword';
-let wakeWordFilename = wakeWordName;
-let wakeWordPath = '';
+### Adding Android Models
 
-if (Platform.OS == 'android') {
-    // for Android, extract resources from APK
-    wakeWordFilename += '_android.ppn';
-    wakeWordPath = `${RNFS.DocumentDirectoryPath}/${wakeWordFilename}`;
-    await RNFS.copyFileRes(wakeWordFilename, wakeWordPath);
-} else if (Platform.OS == 'ios') {
-    wakeWordFilename += '_ios.ppn';
-    wakeWordPath = `${RNFS.MainBundlePath}/${wakeWordFilename}`;
+Android custom models and keywords must be added to `./android/app/src/main/assets/`.
+
+### Adding iOS Models
+
+iOS models can be added anywhere under `./ios`, but it must be included as a bundled resource.
+The easiest way to include a bundled resource in the iOS project is to:
+
+1. Open XCode.
+2. Either:
+  - Drag and Drop the model/keyword file to the navigation tab.
+  - Right-click on the navigation tab, and click `Add Files To ...`.
+
+This will bundle your models together when the app is built.
+
+### Using Custom Wake Words
+
+```typescript
+const accessKey = "${ACCESS_KEY}"
+
+let keyword_paths: string[];
+if (Platform.OS === 'android') {
+    keyword_paths = ['keyword1_android.ppn', 'keyword2_android.ppn'];
+} else if (Platform.OS === 'ios') {
+    keyword_paths = ['keyword1_ios.ppn', 'keyword2_ios.ppn'];
+} else {
+    // handle errors
 }
+
+try {
+    this._porcupine = await Porcupine.fromKeywordPaths(
+        accessKey,
+        keyword_paths,
+        'model.pv',
+        [0.5, 0.6]
+    );
+} catch (err) { }
 ```
+
+Alternatively, if the model files are deployed to the device with a different method, the absolute paths to the files on device can be used.
 
 ## Non-English Wake Words
 
-In order to detect non-English wake words you need to use the corresponding model file. The model files for all supported languages are available [here](/lib/common).
+In order to detect non-English wake words you need to use the corresponding model file (`.pv`). The model files for all supported languages are available [here](https://github.com/Picovoice/porcupine/tree/master/lib/common).
 
 ## Demo App
 
-Check out the [Porcupine React Native demo](/demo/react-native) to see what it looks like to use Porcupine in a cross-platform app!
+Check out the [Porcupine React Native demo](https://github.com/Picovoice/porcupine/tree/master/demo/react-native) to see what it looks like to use Porcupine in a cross-platform app!

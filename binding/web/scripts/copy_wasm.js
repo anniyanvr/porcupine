@@ -1,34 +1,37 @@
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
-import ncp from "ncp";
+const fs = require("fs");
+const { join, extname } = require("path");
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const wasmFiles = [
+  "pv_porcupine_simd.wasm",
+  "pv_porcupine_simd.js",
+  "pv_porcupine_pthread.wasm",
+  "pv_porcupine_pthread.js",
+]
 
-const LANGUAGES = ["en", "de", "es", "fr"];
+console.log("Copying the WASM model...");
 
-console.log("Copying wasm/JS code from /lib/wasm/ ...");
+const sourceDirectory = join(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "lib",
+  "wasm"
+);
 
-for (const language of LANGUAGES) {
-  console.log(`--- Language: '${language}' ---`);
-  const sourceDirectory = join(
-    __dirname,
-    "..",
-    "..",
-    "..",
-    "lib",
-    "wasm",
-    language
-  );
+const outputDirectory = join(__dirname, "..", "src", "lib");
 
-  const outputDirectory = join(__dirname, "..", language);
-
-  ncp(sourceDirectory, outputDirectory, (error) => {
-    if (error) {
-      console.error(error);
-    } else {
-      console.log(`Copied ${sourceDirectory} => ${outputDirectory}`);
+try {
+  fs.mkdirSync(outputDirectory, { recursive: true });
+  wasmFiles.forEach(file => {
+    fs.copyFileSync(join(sourceDirectory, file), join(outputDirectory, file))
+    const ext = extname(file);
+    if (ext === ".js") {
+      fs.copyFileSync(join(sourceDirectory, file), join(outputDirectory, file.replace(ext, ".txt")));
     }
-  });
+  })
+} catch (error) {
+  console.error(error);
 }
 
 console.log("... Done!");

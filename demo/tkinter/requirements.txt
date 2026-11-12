@@ -1,2 +1,2 @@
-pyaudio
-pvporcupine==1.9.5
+pvporcupine==4.0.1
+pvrecorder==1.2.4

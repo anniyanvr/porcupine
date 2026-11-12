@@ -1,5 +1,5 @@
 /*
-    Copyright 2020 Picovoice Inc.
+    Copyright 2020-2025 Picovoice Inc.
 
     You may not use this file except in compliance with the license. A copy of the license is
     located in the "LICENSE" file accompanying this source.
@@ -12,11 +12,7 @@
 
 package ai.picovoice.reactnative.porcupine;
 
-import ai.picovoice.porcupine.Porcupine;
-import ai.picovoice.porcupine.PorcupineException;
-
-import android.content.res.Resources;
-import android.util.Log;
+import ai.picovoice.porcupine.*;
 
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Promise;
@@ -24,115 +20,172 @@ import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableArray;
+import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Locale;
 
 
 public class PorcupineModule extends ReactContextBaseJavaModule {
 
-  private static final String LOG_TAG = "PvPorcupine";
-  private final ReactApplicationContext reactContext;
-  private final Map<String, Porcupine> porcupinePool = new HashMap<String, Porcupine>();
+    private static final String LOG_TAG = "PvPorcupine";
+    private final ReactApplicationContext reactContext;
+    private final Map<String, Porcupine> porcupinePool = new HashMap<>();
 
-  public PorcupineModule(ReactApplicationContext reactContext) {
-    super(reactContext);
-    this.reactContext = reactContext;
-  }
+    public PorcupineModule(ReactApplicationContext reactContext) {
+        super(reactContext);
+        this.reactContext = reactContext;
 
-  @Override
-  public String getName() {
-    return "PvPorcupine";
-  }
-
-  @Override
-  public Map<String, Object> getConstants() {
-
-    // default model file
-    final File resourceDirectory = reactContext.getFilesDir();
-    final Map<String, Object> constants = new HashMap<>();
-    constants.put("DEFAULT_MODEL_PATH", new File(resourceDirectory, "porcupine_params.pv").getAbsolutePath());
-
-    // default keyword files
-    final Map<String, String> keywordPaths = new HashMap<>();
-    for (Porcupine.BuiltInKeyword x : Porcupine.BuiltInKeyword.values()) {
-      String fileName = x.name().toLowerCase();      
-      String keyword = fileName.replace('_', ' ');
-      keywordPaths.put(keyword, new File(resourceDirectory, fileName + ".ppn").getAbsolutePath());
-    }
-    constants.put("KEYWORD_PATHS", keywordPaths);
-
-    return constants;
-  }
-
-  @ReactMethod
-  public void create(String modelPath, ReadableArray keywordPaths, ReadableArray sensitivities, Promise promise) {
-
-    // convert from ReadableArrays to Java types
-    String[] keywordPathsJava = new String[keywordPaths.size()];
-    for (int i = 0; i < keywordPaths.size(); i++) {
-      keywordPathsJava[i] = keywordPaths.getString(i);
+        Porcupine.setSdk("react-native");
     }
 
-    float[] sensitivitiesJava = new float[sensitivities.size()];
-    for (int i = 0; i < sensitivities.size(); i++) {
-      sensitivitiesJava[i] = (float) sensitivities.getDouble(i);
+    @Override
+    public String getName() {
+        return "PvPorcupine";
     }
 
-    try {
-      Porcupine porcupine = new Porcupine.Builder()
-                              .setModelPath(modelPath)
-                              .setKeywordPaths(keywordPathsJava)
-                              .setSensitivities(sensitivitiesJava)
-                              .build(reactContext);
-      porcupinePool.put(String.valueOf(System.identityHashCode(porcupine)), porcupine);
-     
-      WritableMap paramMap = Arguments.createMap();
-      paramMap.putString("handle", String.valueOf(System.identityHashCode(porcupine)));
-      paramMap.putInt("frameLength", porcupine.getFrameLength());
-      paramMap.putInt("sampleRate", porcupine.getSampleRate());
-      paramMap.putString("version", porcupine.getVersion());
-      promise.resolve(paramMap);
-    } catch (PorcupineException e) {
-      promise.reject(e.toString());
+    @ReactMethod
+    public void getAvailableDevices(Promise promise) {
+        try {
+            String[] devices = Porcupine.getAvailableDevices();
+            WritableArray result = Arguments.createArray();
+            for (int i = 0; i < devices.length; i++) {
+                result.pushString(devices[i]);
+            }
+            promise.resolve(result);
+        } catch (PorcupineException e) {
+            promise.reject(e.getClass().getSimpleName(), e.getMessage());
+        }
     }
-  }
 
-  @ReactMethod
-  public void delete(String handle) {
-    if (porcupinePool.containsKey(handle)) {
-      porcupinePool.get(handle).delete();
-      porcupinePool.remove(handle);
+    @ReactMethod
+    public void fromBuiltInKeywords(
+            String accessKey,
+            String modelPath,
+            String device,
+            ReadableArray keywords,
+            ReadableArray sensitivities,
+            Promise promise
+    ) {
+        // convert from ReadableArrays to Java types
+        Porcupine.BuiltInKeyword[] keywordsJava = new Porcupine.BuiltInKeyword[keywords.size()];
+        for (int i = 0; i < keywords.size(); i++) {
+            try {
+                String keyword = keywords.getString(i);
+                if (keyword == null) {
+                    promise.reject(
+                            PorcupineInvalidArgumentException.class.getSimpleName(),
+                            "keyword must be a valid string");
+                    return;
+                }
+
+                keyword = keyword.replace(' ', '_');
+                keywordsJava[i] = Porcupine.BuiltInKeyword.valueOf(keyword.toUpperCase(Locale.ENGLISH));
+            } catch (IllegalArgumentException e) {
+                promise.reject(
+                        PorcupineInvalidArgumentException.class.getSimpleName(),
+                        String.format("'%s' is not a built-in keyword", keywords.getString(i)));
+                return;
+            }
+        }
+
+        float[] sensitivitiesJava = new float[sensitivities.size()];
+        for (int i = 0; i < sensitivities.size(); i++) {
+            sensitivitiesJava[i] = (float) sensitivities.getDouble(i);
+        }
+
+        try {
+            Porcupine porcupine = new Porcupine.Builder()
+                    .setAccessKey(accessKey)
+                    .setModelPath(modelPath.isEmpty() ? null : modelPath)
+                    .setDevice(device.isEmpty() ? null : device)
+                    .setKeywords(keywordsJava.length == 0 ? null : keywordsJava)
+                    .setSensitivities(sensitivitiesJava.length == 0 ? null : sensitivitiesJava)
+                    .build(reactContext);
+            porcupinePool.put(String.valueOf(System.identityHashCode(porcupine)), porcupine);
+
+            WritableMap paramMap = Arguments.createMap();
+            paramMap.putString("handle", String.valueOf(System.identityHashCode(porcupine)));
+            paramMap.putInt("frameLength", porcupine.getFrameLength());
+            paramMap.putInt("sampleRate", porcupine.getSampleRate());
+            paramMap.putString("version", porcupine.getVersion());
+            promise.resolve(paramMap);
+        } catch (PorcupineException e) {
+            promise.reject(e.getClass().getSimpleName(), e.getMessage());
+        }
     }
-  }
 
-  @ReactMethod
-  public void process(String handle, ReadableArray pcmArray, Promise promise) {
-    try {
+    @ReactMethod
+    public void fromKeywordPaths(
+            String accessKey,
+            String modelPath,
+            String device,
+            ReadableArray keywordPaths,
+            ReadableArray sensitivities,
+            Promise promise) {
+        // convert from ReadableArrays to Java types
+        String[] keywordPathsJava = new String[keywordPaths.size()];
+        for (int i = 0; i < keywordPaths.size(); i++) {
+            keywordPathsJava[i] = keywordPaths.getString(i);
+        }
 
-      if (!porcupinePool.containsKey(handle)) {
-        promise.reject("Invalid Porcupine handle provided to native module.");
-        return;
-      }
+        float[] sensitivitiesJava = new float[sensitivities.size()];
+        for (int i = 0; i < sensitivities.size(); i++) {
+            sensitivitiesJava[i] = (float) sensitivities.getDouble(i);
+        }
 
-      Porcupine porcupine = porcupinePool.get(handle);
-      ArrayList<Object> pcmArrayList = pcmArray.toArrayList();
-      short[] buffer = new short[pcmArray.size()];
-      for (int i = 0; i < pcmArray.size(); i++) {
-        buffer[i] = ((Number) pcmArrayList.get(i)).shortValue();
-      }
-      int result = porcupine.process(buffer);
-      promise.resolve(result);
-    } catch (PorcupineException e) {
-      promise.reject(e.toString());
+        try {
+            Porcupine porcupine = new Porcupine.Builder()
+                    .setAccessKey(accessKey)
+                    .setModelPath(modelPath.isEmpty() ? null : modelPath)
+                    .setDevice(device.isEmpty() ? null : device)
+                    .setKeywordPaths(keywordPathsJava.length == 0 ? null : keywordPathsJava)
+                    .setSensitivities(sensitivitiesJava.length == 0 ? null : sensitivitiesJava)
+                    .build(reactContext);
+            porcupinePool.put(String.valueOf(System.identityHashCode(porcupine)), porcupine);
+
+            WritableMap paramMap = Arguments.createMap();
+            paramMap.putString("handle", String.valueOf(System.identityHashCode(porcupine)));
+            paramMap.putInt("frameLength", porcupine.getFrameLength());
+            paramMap.putInt("sampleRate", porcupine.getSampleRate());
+            paramMap.putString("version", porcupine.getVersion());
+            promise.resolve(paramMap);
+        } catch (PorcupineException e) {
+            promise.reject(e.getClass().getSimpleName(), e.getMessage());
+        }
     }
-  }
+
+    @ReactMethod
+    public void delete(String handle) {
+        if (porcupinePool.containsKey(handle)) {
+            porcupinePool.get(handle).delete();
+            porcupinePool.remove(handle);
+        }
+    }
+
+    @ReactMethod
+    public void process(String handle, ReadableArray pcmArray, Promise promise) {
+        try {
+            if (!porcupinePool.containsKey(handle)) {
+                promise.reject(PorcupineInvalidStateException.class.getSimpleName(),
+                        "Invalid Porcupine handle provided to native module.");
+                return;
+            }
+
+            Porcupine porcupine = porcupinePool.get(handle);
+            ArrayList<Object> pcmArrayList = pcmArray.toArrayList();
+            short[] buffer = new short[pcmArray.size()];
+            for (int i = 0; i < pcmArray.size(); i++) {
+                buffer[i] = ((Number) pcmArrayList.get(i)).shortValue();
+            }
+            int result = porcupine.process(buffer);
+            promise.resolve(result);
+        } catch (PorcupineException e) {
+            promise.reject(e.getClass().getSimpleName(), e.getMessage());
+        }
+    }
 }

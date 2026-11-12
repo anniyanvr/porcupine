@@ -1,10 +1,10 @@
-# Porcupine NodeJS Demos
+# Porcupine Node.js Demos
 
 This package provides two demonstration command-line applications for Porcupine: a file based demo, which scans a compatible WAV file for keywords, and a microphone demo, which listens for keywords and outputs detections live.
 
 ## Introduction to Porcupine
 
-Porcupine is is a highly accurate and lightweight wake word engine. It enables building always-listening voice-enabled applications using cutting edge voice AI.
+Porcupine is a highly accurate and lightweight wake word engine. It enables building always-listening voice-enabled applications using cutting edge voice AI.
 
 Porcupine is:
 
@@ -19,35 +19,26 @@ To learn more about Porcupine, see the [product](https://picovoice.ai/products/p
 
 ## Compatibility
 
-These demos run Porcupine on **NodeJS 10+** on the following platforms:
+These demos run Porcupine on **Node.js 18+** on the following platforms:
 
+- Windows (x86_64, arm64)
 - Linux (x86_64)
-- macOS (x86_64)
-- Raspberry Pi (2,3,4)
+- macOS (x86_64, arm64)
+- Raspberry Pi (3, 4, 5)
 
 ### Web Browsers
 
-These demos and the bindings upon which they are built are for NodeJS and **do not work in a browser**. Looking to run Porcupine in-browser? Use the [JavaScript WebAssembly](https://github.com/Picovoice/porcupine/tree/master/binding/javascript) binding instead.
+These demos and the bindings upon which they are built are for Node.js and **do not work in a browser**. Looking to run Porcupine in-browser? See the [@picovoice/porcupine-web](https://www.npmjs.com/package/@picovoice/porcupine-web)<!-- markdown-link-check-disable-line --> package.
 
-## Prerequisites
+## AccessKey
 
-If you only wish to use the file-based demo, you may skip ahead to [installing the NPM package](#install-npm-package).
+Porcupine requires a valid Picovoice `AccessKey` at initialization. `AccessKey` acts as your credentials when using Porcupine SDKs.
+You can get your `AccessKey` for free. Make sure to keep your `AccessKey` secret.
+Signup or Login to [Picovoice Console](https://console.picovoice.ai/) to get your `AccessKey`.
 
 ### Microphone demo
 
-The microphone demo allows you monitor microphone input for keywords using Porcupine. Note: **the microphone demo requires you to install/setup software that is not included by npm**. For microphone access, the [node-record-lpm16](https://www.npmjs.com/package/node-record-lpcm16) package is used. Please follow that documentation for troubleshooting.
-
-The [node-record-lpm16](https://www.npmjs.com/package/node-record-lpcm16) library spawns a different microphone recording process depending on the OS used. The microphone program (SoX or Arecord) must be setup manually and is not included with yarn/npm.
-
-#### Setup SoX / Arecord
-
-##### macOS
-
-See [the documentation for node-record-lpm16](https://www.npmjs.com/package/node-record-lpcm16#dependencies) for instructions on installing [SoX](http://sox.sourceforge.net/).
-
-##### Raspberry Pi
-
-See [this quick start](https://picovoice.ai/quick-start/wake-word-raspberrypi/) for instructions on setting up the microphone / default device.
+The microphone demo allows you monitor microphone input for keywords using Porcupine.
 
 ## Install NPM package
 
@@ -65,19 +56,37 @@ npm install -g @picovoice/porcupine-node-demo
 
 ### Run the mic demo
 
-Use `ppn-mic-demo` to run the mic demo. Specify either built-in keywords with `--keywords` or paths to Porcupine `.ppn` files with `--keyword_file_paths`.
-
-Here is an example which will listen for "grapefruit" keyword:
+Use `ppn-mic-demo` to run the mic demo. First select an input audio device to start recording audio:
 
 ```console
-ppn-mic-demo --keywords grapefruit
+ppn-mic-demo --show_audio_devices
+```
+
+This command prints a list of the available devices and its inputs:
+
+```console
+index: 0, device name: USB Audio Device
+index: 1, device name: MacBook Air Microphone
+```
+
+Specify the input audio device with `--audio_device_index` and either built-in
+keywords with `--keywords` or paths to Porcupine `.ppn` files with `--keyword_file_paths`.
+Provide your Picovoice AccessKey with `--access_key`.
+
+Here is an example using Audio Device Index which will listen for "grapefruit" keyword:
+
+```console
+ppn-mic-demo \
+--access_key ${ACCESS_KEY} \
+--keywords grapefruit \
+--audio_device_index 0
 ```
 
 Wake word detections will display in the console:
 
 ```console
-$ ppn-mic-demo --keywords grapefruit
-Platform: 'mac'; attempting to use 'sox' to access microphone ...
+$ ppn-mic-demo --access_key ${ACCESS_KEY} --keywords grapefruit
+Using device: USB Audio Device
 Listening for wake word(s): grapefruit
 Press ctrl+c to exit.
 
@@ -95,13 +104,19 @@ To run the file-based demo,
 e.g. check the input wave file for the built-in keywords "grasshopper" and "bumblebee" against the audio sample that is included with the porcupine repository:
 
 ```console
-ppn-file-demo --input_audio_file_path ../../resources/audio_samples/multiple_keywords.wav --keywords grasshopper,bumblebee
+ppn-file-demo \
+--access_key ${ACCESS_KEY} \
+--input_audio_file_path ../../resources/audio_samples/multiple_keywords.wav \
+--keywords grasshopper,bumblebee
 ```
 
 Detections of each keyword will be output in the terminal, along with their time location in the file:
 
 ```console
-ppn-file-demo --input_audio_file_path ../../resources/audio_samples/multiple_keywords.wav --keywords grasshopper
+ppn-file-demo \
+--access_key ${ACCESS_KEY} \
+--input_audio_file_path ../../resources/audio_samples/multiple_keywords.wav \
+--keywords grasshopper
 Detected keyword 'bumblebee' @ 16.096s
 Detected keyword 'grasshopper' @ 28.896s
 ```
@@ -125,6 +140,7 @@ Usage: ppn-file-demo [options]
 
 Options:
   -i, --input_audio_file_path <string>  input audio wave file in 16-bit 16KHz linear PCM format (mono)
+  -a, --access_key <string>             AccessKey obtain from the Picovoice Console (https://console.picovoice.ai/)
   -k, --keyword_file_paths <string>     absolute path(s) to porcupine keyword files (.ppn)
   -b, --keywords <string>               built in keyword(s)
                                         (americano,blueberry,bumblebee,grapefruit,grasshopper,picovoice,porcupine,terminator)
@@ -139,12 +155,16 @@ Options:
 The sensitivity is a floating point value in the range [0,1] which specifies the tradeoff between miss rate and false alarm. The demo defaults to 0.5. You can override this with `--sensitivity`:
 
 ```console
-ppn-mic-demo --input_audio_file_path ../../resources/audio_samples/multiple_keywords.wav --keywords bumblebee --sensitivity 0.65
+ppn-mic-demo \
+--access_key ${ACCESS_KEY} \
+--input_audio_file_path ../../resources/audio_samples/multiple_keywords.wav \
+--keywords bumblebee \
+--sensitivity 0.65
 ```
 
 ### Custom keyword (ppn) files
 
-Porcupine includes several built-in keywords, which are stored as `.ppn` files. To train custom PPN files, see the [Picovoice Console](https://picovoice.ai/console/).
+Porcupine includes several built-in keywords, which are stored as `.ppn` files. To train custom PPN files, see the [Picovoice Console](https://console.picovoice.ai/).
 
 Unlike the built-in keywords, custom PPN files generated with the Picovoice Console carry restrictions including (but not limited to): training allowance, time limits, available platforms, and commercial usage.
 
@@ -156,6 +176,7 @@ e.g. for Linux (x86_64), using two keywords: "bumblebee" and "grasshopper":
 
 ```console
 ppn-file-demo \
+--access_key ${ACCESS_KEY} \
 --input_audio_file_path ../../resources/audio_samples/multiple_keywords.wav \
 --keyword_file_paths ../../resources/keyword_files/linux/grasshopper_linux.ppn,../../resources/keyword_files/linux/bumblebee_linux.ppn
 ```
@@ -164,10 +185,11 @@ ppn-file-demo \
 
 You may override the porcupine model and dynamic libraries by specifying their absolute paths with `--model_file_path` and `--library_file_path`, respectively. As with keyword files, the dynamic library is specific to the platform.
 
-e.g. for macOS (x86_64):
+e.g. for macOS (x86_64, arm64):
 
 ```console
 ppn-file-demo \
+--access_key ${ACCESS_KEY} \
 --input_audio_file_path ../../resources/audio_samples/multiple_keywords.wav \
 --keywords terminator \
 --library_file_path ../../lib/mac/x86_64/libpv_porcupine.dylib \
@@ -195,13 +217,13 @@ npm install
 Use `yarn mic` (or `npm run mic`) to run the mic demo from the demos/nodejs directory. For `npm run`, note the extra `--` needed before specifying commands. This is to disambiguate whether the options are intended for npm or for the demo script.
 
 ```console
-yarn mic --keywords grapefruit
+yarn mic --access_key ${ACCESS_KEY} --keywords grapefruit
 ```
 
 (or)
 
 ```console
-npm run mic -- --keywords grapefruit
+npm run mic -- --access_key ${ACCESS_KEY} --keywords grapefruit
 ```
 
 ### File demo
@@ -209,11 +231,15 @@ npm run mic -- --keywords grapefruit
 Use `yarn file` or `npm run file` from the `demos/nodejs` directory. For `npm run`, note the extra `--` needed before specifying commands. This is to disambiguate whether the options are intended for npm or for the demo script.
 
 ```console
-yarn file --input_audio_file_path ../../resources/audio_samples/multiple_keywords.wav --keywords grasshopper
+yarn file --access_key ${ACCESS_KEY} \
+--input_audio_file_path ../../resources/audio_samples/multiple_keywords.wav \
+--keywords grasshopper
 ```
 
 (or)
 
 ```console
-npm run file -- --input_audio_file_path ../../resources/audio_samples/multiple_keywords.wav --keywords grasshopper
+npm run file -- --access_key ${ACCESS_KEY} \
+--input_audio_file_path ../../resources/audio_samples/multiple_keywords.wav \
+--keywords grasshopper
 ```

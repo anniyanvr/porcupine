@@ -12,9 +12,10 @@ module.exports = {
     ecmaVersion: 2018
   },
 
+  ignorePatterns: ['**/*.js', 'node_modules', 'dist'],
   overrides: [
     {
-      files: ['**/*.ts', '**/*.tsx'],
+      files: ['src/**/*.ts'],
       extends: ['plugin:@typescript-eslint/recommended'],
       rules: {
         '@typescript-eslint/no-parameter-properties': 2,
@@ -24,16 +25,24 @@ module.exports = {
         '@typescript-eslint/no-use-before-define': 2,
         '@typescript-eslint/camelcase': 0,
         '@typescript-eslint/no-empty-interface': 2,
-        '@typescript-eslint/explicit-function-return-type': 2,
-        '@typescript-eslint/ban-ts-ignore': 0,
-        '@typescript-eslint/no-empty-function' : [2, { "allow": ["constructors"] }],
+        '@typescript-eslint/explicit-function-return-type': 1,
+        '@typescript-eslint/ban-ts-comment': 0,
+        '@typescript-eslint/no-empty-function': [2, { "allow": ["constructors"] }],
         '@typescript-eslint/no-inferrable-types': [
           2,
           {
             ignoreParameters: true,
             ignoreProperties: true
           }
-        ]
+        ],
+        '@typescript-eslint/no-shadow': 2
+      }
+    },
+    {
+      files: ['test/**/*.ts', 'cypress/**/*.ts'],
+      extends: ['plugin:cypress/recommended'],
+      rules: {
+        'no-unused-expressions': 0
       }
     }
   ],
@@ -97,7 +106,7 @@ module.exports = {
     'use-isnan': 2,
     // ensure JSDoc comments are valid
     'valid-jsdoc': [
-      2,
+      0,
       {
         requireReturn: false,
         requireReturnDescription: false
@@ -248,7 +257,7 @@ module.exports = {
     // disallow shadowing of names such as arguments
     'no-shadow-restricted-names': 2,
     // disallow declaration of variables already declared in the outer scope
-    'no-shadow': 2,
+    'no-shadow': 0,
     // disallow use of undefined when initializing variables
     'no-undef-init': 0,
     // disallow use of undeclared variables unless mentioned in a /*global */ block
@@ -372,7 +381,7 @@ module.exports = {
     // disallow the use of Boolean literals in conditional expressions
     'no-unneeded-ternary': 0,
     // require or disallow padding inside curly braces
-    'object-curly-spacing': 0,
+    'object-curly-spacing': ["error", "always"],
     // allow just one var statement per function
     'one-var': [1, 'never'],
     // require assignment operator shorthand where possible or prohibit it entirely
@@ -384,7 +393,7 @@ module.exports = {
     // require quotes around object literal property names
     'quote-props': 0,
     // specify whether double or single quotes should be used
-    quotes: [1, 'single', 'avoid-escape'],
+    quotes: 0,
     // Require JSDoc comment
     'require-jsdoc': 0,
     // enforce spacing before and after semicolons

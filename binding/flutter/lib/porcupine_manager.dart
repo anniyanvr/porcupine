@@ -1,5 +1,5 @@
 //
-// Copyright 2020 Picovoice Inc.
+// Copyright 2020-2025 Picovoice Inc.
 //
 // You may not use this file except in compliance with the license. A copy of the license is located in the "LICENSE"
 // file accompanying this source.
@@ -13,32 +13,40 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_voice_processor/flutter_voice_processor.dart';
-import 'package:porcupine/porcupine.dart';
-import 'package:porcupine/porcupine_error.dart';
+import 'package:porcupine_flutter/porcupine.dart';
+import 'package:porcupine_flutter/porcupine_error.dart';
 
-typedef WakeWordCallback(int keywordIndex);
-typedef ErrorCallback(PvError error);
+typedef WakeWordCallback = Function(int keywordIndex);
+typedef ErrorCallback = Function(PorcupineException error);
 
 class PorcupineManager {
-  /// a list of built-in keywords
-  static const List<String> BUILT_IN_KEYWORDS = Porcupine.BUILT_IN_KEYWORDS;
-
   VoiceProcessor? _voiceProcessor;
   Porcupine? _porcupine;
 
-  final WakeWordCallback _wakeWordCallback;
-  RemoveListener? _removeVoiceProcessorListener;
+  late VoiceProcessorFrameListener _frameListener;
+  late VoiceProcessorErrorListener _errorListener;
+
+  bool _isListening = false;
 
   /// Static creator for initializing PorcupineManager from a selection of built-in keywords
   ///
+  /// [accessKey] AccessKey obtained from Picovoice Console (https://console.picovoice.ai/).
+  ///
   /// [keywords] is a List of (phrases) for detection. The list of available
-  /// keywords can be retrieved using [Porcupine.BUILT_IN_KEYWORDS]
+  /// keywords can be retrieved using [BuiltInKeyword]
   ///
   /// [wakeWordCallback] A callback that is triggered when one of the given keywords
   /// has been detected by Porcupine
   ///
   /// [modelPath] is a path to the file containing model parameters. If not set
   /// it will be set to the default location.
+  ///
+  /// [device] is the string representation of the device (e.g., CPU or GPU) to use. If set to `best`, the most
+  /// suitable device is selected automatically. If set to `gpu`, the engine uses the first available GPU
+  /// device. To select a specific GPU device, set this argument to `gpu:${GPU_INDEX}`, where `${GPU_INDEX}`
+  /// is the index of the target GPU. If set to `cpu`, the engine will run on the CPU with the default
+  /// number of threads. To specify the number of threads, set this argument to `cpu:${NUM_THREADS}`,
+  /// where `${NUM_THREADS}` is the desired number of threads.
   ///
   /// [sensitivities] sensitivities for each keywords model. A higher sensitivity
   /// reduces miss rate at the cost of potentially higher false alarm rate.
@@ -47,18 +55,31 @@ class PorcupineManager {
   /// [errorCallback] is an optional callback that triggers if Porcupine
   /// experiences a problem while processing audio
   ///
+  /// Throws a `PorcupineException` if not successfully initialized.
+  ///
   /// returns an instance of PorcupineManager
-  static Future<PorcupineManager> fromKeywords(
-      List<String> keywords, WakeWordCallback wakeWordCallback,
-      {String? modelPath,
-      List<double>? sensitivities,
-      ErrorCallback? errorCallback}) async {
-    Porcupine porcupine = await Porcupine.fromKeywords(keywords,
-        modelPath: modelPath, sensitivities: sensitivities);
-    return new PorcupineManager._(porcupine, wakeWordCallback, errorCallback);
+  static Future<PorcupineManager> fromBuiltInKeywords(
+      String accessKey,
+      List<BuiltInKeyword> keywords,
+      WakeWordCallback wakeWordCallback,
+      {
+        String? modelPath,
+        String? device,
+        List<double>? sensitivities,
+        ErrorCallback? errorCallback
+      }) async {
+    Porcupine porcupine = await Porcupine.fromBuiltInKeywords(
+        accessKey,
+        keywords,
+        modelPath: modelPath,
+        device: device,
+        sensitivities: sensitivities);
+    return PorcupineManager._(porcupine, wakeWordCallback, errorCallback);
   }
 
   /// Static creator for initializing PorcupineManager from a list of paths to custom keyword files
+  ///
+  /// [accessKey] AccessKey obtained from Picovoice Console (https://console.picovoice.ai/).
   ///
   /// [keywordPaths] A List of absolute paths to keyword model files.
   ///
@@ -68,87 +89,125 @@ class PorcupineManager {
   /// [modelPath] is a path to the file containing model parameters. If not set
   /// it will be set to the default location.
   ///
+  /// [device] is the string representation of the device (e.g., CPU or GPU) to use. If set to `best`, the most
+  /// suitable device is selected automatically. If set to `gpu`, the engine uses the first available GPU
+  /// device. To select a specific GPU device, set this argument to `gpu:${GPU_INDEX}`, where `${GPU_INDEX}`
+  /// is the index of the target GPU. If set to `cpu`, the engine will run on the CPU with the default
+  /// number of threads. To specify the number of threads, set this argument to `cpu:${NUM_THREADS}`,
+  /// where `${NUM_THREADS}` is the desired number of threads.
+  ///
   /// [sensitivities] sensitivities for each keywords model. A higher sensitivity
   /// reduces miss rate at the cost of potentially higher false alarm rate.
   /// Sensitivity should be a floating-point number within 0 and 1.
   ///
   /// [errorCallback] is an optional callback that triggers if Porcupine
-  /// experiences a problem while processing audio
+  /// experiences a problem while processing audio.
   ///
-  /// Thows a `PvError` if not initialized correctly
+  /// Throws a `PorcupineException` if not successfully initialized.
   ///
   /// returns an instance of PorcupineManager
   static Future<PorcupineManager> fromKeywordPaths(
-      List<String> keywordPaths, WakeWordCallback wakeWordCallback,
-      {String? modelPath,
-      List<double>? sensitivities,
-      ErrorCallback? errorCallback}) async {
-    Porcupine porcupine = await Porcupine.fromKeywordPaths(keywordPaths,
-        modelPath: modelPath, sensitivities: sensitivities);
-    return new PorcupineManager._(porcupine, wakeWordCallback, errorCallback);
+      String accessKey,
+      List<String> keywordPaths,
+      WakeWordCallback wakeWordCallback,
+      {
+        String? modelPath,
+        String? device,
+        List<double>? sensitivities,
+        ErrorCallback? errorCallback
+      }) async {
+    Porcupine porcupine = await Porcupine.fromKeywordPaths(
+        accessKey,
+        keywordPaths,
+        modelPath: modelPath,
+        device: device,
+        sensitivities: sensitivities);
+    return PorcupineManager._(porcupine, wakeWordCallback, errorCallback);
   }
 
   // private constructor
-  PorcupineManager._(
-      this._porcupine, this._wakeWordCallback, ErrorCallback? errorCallback)
-      : _voiceProcessor = VoiceProcessor.getVoiceProcessor(
-            Porcupine.frameLength, Porcupine.sampleRate) {
-    _removeVoiceProcessorListener = _voiceProcessor?.addListener((buffer) {
-      // cast from dynamic to int array
-      List<int> porcupineFrame;
-      try {
-        porcupineFrame = (buffer as List<dynamic>).cast<int>();
-      } on Error {
-        PvError castError = new PvError(
-            "flutter_voice_processor sent an unexpected data type.");
-        errorCallback == null
-            ? print(castError.message)
-            : errorCallback(castError);
+  PorcupineManager._(this._porcupine, WakeWordCallback wakeWordCallback,
+      ErrorCallback? errorCallback)
+      : _voiceProcessor = VoiceProcessor.instance {
+    _frameListener = (List<int> frame) async {
+      if (!_isListening) {
         return;
       }
 
-      // process frame with Porcupine
       try {
-        int? keywordIndex = _porcupine?.process(porcupineFrame);
+        int? keywordIndex = await _porcupine?.process(frame);
         if (keywordIndex != null && keywordIndex >= 0) {
-          _wakeWordCallback(keywordIndex);
+          wakeWordCallback(keywordIndex);
         }
-      } on PvError catch (error) {
-        errorCallback == null ? print(error.message) : errorCallback(error);
+      } on PorcupineException catch (error) {
+        errorCallback == null
+            ? print("PorcupineException: ${error.message}")
+            : errorCallback(error);
       }
-    });
+    };
+
+    _errorListener = (VoiceProcessorException error) {
+      errorCallback == null
+          ? print("PorcupineException: ${error.message}")
+          : errorCallback(PorcupineException(error.message));
+    };
   }
 
-  /// Opens audio input stream and sends audio frames to Porcupine
-  /// Throws a `PvAudioException` if there was a problem starting the audio engine
+  /// Starts audio recording and processing with the Porcupine engine
+  /// Throws a `PorcupineException` if there was a problem starting audio recording
   Future<void> start() async {
+    if (_isListening) {
+      return;
+    }
     if (_porcupine == null || _voiceProcessor == null) {
-      throw new PvStateError(
+      throw PorcupineInvalidStateException(
           "Cannot start Porcupine - resources have already been released");
     }
 
     if (await _voiceProcessor?.hasRecordAudioPermission() ?? false) {
+      _voiceProcessor?.addFrameListener(_frameListener);
+      _voiceProcessor?.addErrorListener(_errorListener);
       try {
-        await _voiceProcessor?.start();
-      } on PlatformException {
-        throw new PvAudioException(
-            "Audio engine failed to start. Hardware may not be supported.");
+        await _voiceProcessor?.start(
+            _porcupine!.frameLength, _porcupine!.sampleRate);
+      } on PlatformException catch (e) {
+        throw PorcupineRuntimeException(
+            "Failed to start audio recording: ${e.message}");
       }
     } else {
-      throw new PvAudioException(
+      throw PorcupineRuntimeException(
           "User did not give permission to record audio.");
     }
+
+    _isListening = true;
   }
 
-  /// Closes audio stream
-  Future<void> stop() async => await _voiceProcessor?.stop();
+  /// Stops audio recording and processing
+  /// Throws a `PorcupineException` if there was a problem stopping audio recording.
+  Future<void> stop() async {
+    if (!_isListening) {
+      return;
+    }
+
+    _voiceProcessor?.removeErrorListener(_errorListener);
+    _voiceProcessor?.removeFrameListener(_frameListener);
+
+    if (_voiceProcessor?.numFrameListeners == 0) {
+      try {
+        await _voiceProcessor?.stop();
+      } on PlatformException catch (e) {
+        throw PorcupineRuntimeException(
+            "Failed to stop audio recording: ${e.message}");
+      }
+    }
+
+    _isListening = false;
+  }
 
   /// Releases Porcupine and audio resources
+  /// Throws a `PorcupineException` if there was a problem stopping audio recording.
   Future<void> delete() async {
-    if (_voiceProcessor?.isRecording ?? false) {
-      await _voiceProcessor?.stop();
-    }
-    _removeVoiceProcessorListener?.call();
+    await stop();
     _voiceProcessor = null;
 
     _porcupine?.delete();

@@ -1,5 +1,5 @@
 /*
-    Copyright 2021 Picovoice Inc.
+    Copyright 2021-2023 Picovoice Inc.
 
     You may not use this file except in compliance with the license. A copy of the license is
     located in the "LICENSE" file accompanying this source.
@@ -24,77 +24,159 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.RelativeLayout;
 import android.widget.Spinner;
+import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.ToggleButton;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Locale;
+import java.util.Objects;
 
 import ai.picovoice.porcupine.Porcupine;
+import ai.picovoice.porcupine.PorcupineActivationException;
+import ai.picovoice.porcupine.PorcupineActivationLimitException;
+import ai.picovoice.porcupine.PorcupineActivationRefusedException;
+import ai.picovoice.porcupine.PorcupineActivationThrottledException;
 import ai.picovoice.porcupine.PorcupineException;
+import ai.picovoice.porcupine.PorcupineInvalidArgumentException;
 import ai.picovoice.porcupine.PorcupineManager;
 import ai.picovoice.porcupine.PorcupineManagerCallback;
 
 
 public class MainActivity extends AppCompatActivity {
-    private PorcupineManager porcupineManager = null;
+    private static final String ACCESS_KEY = "${YOUR_ACCESS_KEY_HERE}";
 
+    private PorcupineManager porcupineManager = null;
     private MediaPlayer notificationPlayer;
+    private final PorcupineManagerCallback porcupineManagerCallback = new PorcupineManagerCallback() {
+        @Override
+        public void invoke(int keywordIndex) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (!notificationPlayer.isPlaying()) {
+                        notificationPlayer.start();
+                    }
+
+                    final int detectedBackgroundColor = ContextCompat.getColor(
+                            getApplicationContext(),
+                            R.color.colorAccent);
+                    final RelativeLayout layout = findViewById(R.id.layout);
+                    layout.setBackgroundColor(detectedBackgroundColor);
+                    new CountDownTimer(1000, 100) {
+                        @Override
+                        public void onTick(long millisUntilFinished) {
+                            if (!notificationPlayer.isPlaying()) {
+                                notificationPlayer.start();
+                            }
+                        }
+
+                        @Override
+                        public void onFinish() {
+                            layout.setBackgroundColor(Color.TRANSPARENT);
+                        }
+                    }.start();
+                }
+            });
+        }
+    };
+
+    private void startPorcupine() {
+        try {
+            final Spinner mySpinner = findViewById(R.id.keyword_spinner);
+            final String keywordName = mySpinner.getSelectedItem().toString();
+
+            PorcupineManager.Builder builder = new PorcupineManager.Builder()
+                    .setAccessKey(ACCESS_KEY)
+                    .setSensitivity(0.7f);
+            if (Objects.equals(BuildConfig.FLAVOR, "en")) {
+                String keyword = keywordName.toUpperCase(Locale.ENGLISH).replace(" ", "_");
+                builder.setKeyword(Porcupine.BuiltInKeyword.valueOf(keyword));
+            } else {
+                String keywordFile = keywordName.toLowerCase().replace(" ", "_") + ".ppn";
+                builder.setKeywordPath("keywords/" + keywordFile);
+                String model = "porcupine_params_" + BuildConfig.FLAVOR + ".pv";
+                builder.setModelPath("models/" + model);
+            }
+
+            porcupineManager = builder.build(getApplicationContext(), porcupineManagerCallback);
+            porcupineManager.start();
+        } catch (PorcupineInvalidArgumentException e) {
+            onPorcupineInitError(e.getMessage());
+        } catch (PorcupineActivationException e) {
+            onPorcupineInitError("AccessKey activation error");
+        } catch (PorcupineActivationLimitException e) {
+            onPorcupineInitError("AccessKey reached its device limit");
+        } catch (PorcupineActivationRefusedException e) {
+            onPorcupineInitError("AccessKey refused");
+        } catch (PorcupineActivationThrottledException e) {
+            onPorcupineInitError("AccessKey has been throttled");
+        } catch (PorcupineException e) {
+            onPorcupineInitError("Failed to initialize Porcupine " + e.getMessage());
+        }
+    }
+
+    private void stopPorcupine() {
+        if (porcupineManager != null) {
+            try {
+                porcupineManager.stop();
+                porcupineManager.delete();
+            } catch (PorcupineException e) {
+                displayError("Failed to stop Porcupine.");
+            }
+        }
+    }
+
+    private void onPorcupineInitError(final String errorMessage) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                TextView errorText = findViewById(R.id.errorMessage);
+                errorText.setText(errorMessage);
+                errorText.setVisibility(View.VISIBLE);
+
+                ToggleButton recordButton = findViewById(R.id.record_button);
+                recordButton.setBackground(ContextCompat.getDrawable(
+                        getApplicationContext(),
+                        R.drawable.button_disabled));
+                recordButton.setChecked(false);
+                recordButton.setEnabled(false);
+            }
+        });
+    }
 
     private void displayError(String message) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
     }
 
-    private PorcupineManager initPorcupine() throws PorcupineException {
-        final Spinner mySpinner = findViewById(R.id.keyword_spinner);
-        final String keywordName = mySpinner.getSelectedItem().toString();
-
-        final int detectedBackgroundColor = getResources().getColor(R.color.colorAccent);
-
-        Porcupine.BuiltInKeyword keyword = Porcupine.BuiltInKeyword.valueOf(keywordName.toUpperCase().replace(" ", "_"));
-        return new PorcupineManager.Builder()
-                .setKeyword(keyword)
-                .setSensitivity(0.7f)
-                .build(getApplicationContext(), new PorcupineManagerCallback() {
-                    @Override
-                    public void invoke(int keywordIndex) {
-                        runOnUiThread(new Runnable() {
-                            @Override
-                            public void run() {
-                                if (!notificationPlayer.isPlaying()) {
-                                    notificationPlayer.start();
-                                }
-
-                                final RelativeLayout layout = findViewById(R.id.layout);
-                                layout.setBackgroundColor(detectedBackgroundColor);
-                                new CountDownTimer(1000, 100) {
-                                    @Override
-                                    public void onTick(long millisUntilFinished) {
-                                        if (!notificationPlayer.isPlaying()) {
-                                            notificationPlayer.start();
-                                        }
-                                    }
-
-                                    @Override
-                                    public void onFinish() {
-                                        layout.setBackgroundColor(Color.TRANSPARENT);
-                                    }
-                                }.start();
-                            }
-                        });
-                    }
-                });
-    }
-
     private void configureKeywordSpinner() {
         Spinner spinner = findViewById(R.id.keyword_spinner);
+        ArrayList<String> spinnerItems = new ArrayList<>();
+        if (Objects.equals(BuildConfig.FLAVOR, "en")) {
+            for (Porcupine.BuiltInKeyword k : Porcupine.BuiltInKeyword.values()) {
+                spinnerItems.add(k.name().toLowerCase().replace("_", " "));
+            }
+        } else {
+            try {
+                for (String keyword : this.getAssets().list("keywords")) {
+                    spinnerItems.add(keyword.replace("_", " ").replace(".ppn", ""));
+                }
+            } catch (IOException ex) {
+                displayError("Unable to get keyword files for given language");
+            }
+        }
 
-        ArrayAdapter<CharSequence> adapter = ArrayAdapter.createFromResource(
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(
                 this,
-                R.array.keywords,
-                R.layout.keyword_spinner_item);
-        adapter.setDropDownViewResource(R.layout.keyword_spinner_item);
+                R.layout.keyword_spinner_item,
+                spinnerItems);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         spinner.setAdapter(adapter);
 
         final ToggleButton recordButton = findViewById(R.id.record_button);
@@ -103,14 +185,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onItemSelected(AdapterView<?> parentView, View selectedItemView, int position, long id) {
                 if (recordButton.isChecked()) {
-                    if (porcupineManager != null) {
-                        try {
-                            porcupineManager.stop();
-                            porcupineManager.delete();
-                        } catch (PorcupineException e) {
-                            displayError("Failed to stop Porcupine.");
-                        }
-                    }
+                    stopPorcupine();
                     recordButton.toggle();
                 }
             }
@@ -126,7 +201,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
         notificationPlayer = MediaPlayer.create(this, R.raw.notification);
 
         configureKeywordSpinner();
@@ -135,23 +209,14 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         ToggleButton recordButton = findViewById(R.id.record_button);
-        if (recordButton.isChecked()) {
-            if (porcupineManager != null) {
-                try {
-                    porcupineManager.stop();
-                    porcupineManager.delete();
-                } catch (PorcupineException e) {
-                    displayError("Failed to stop Porcupine.");
-                }
-            }
-            recordButton.toggle();
-        }
+        recordButton.setChecked(false);
 
         super.onStop();
     }
 
     private boolean hasRecordPermission() {
-        return ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+        return ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED;
     }
 
     private void requestRecordPermission() {
@@ -159,38 +224,28 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+    public void onRequestPermissionsResult(
+            int requestCode,
+            @NonNull String[] permissions,
+            @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (grantResults.length == 0 || grantResults[0] == PackageManager.PERMISSION_DENIED) {
-            ToggleButton toggleButton = findViewById(R.id.record_button);
-            toggleButton.toggle();
+            onPorcupineInitError("Microphone permission is required for this demo");
         } else {
-            try {
-                porcupineManager = initPorcupine();
-                porcupineManager.start();
-            } catch (PorcupineException e) {
-                displayError("Failed to initialize Porcupine.");
-            }
+            startPorcupine();
         }
     }
 
     public void process(View view) {
         ToggleButton recordButton = findViewById(R.id.record_button);
-        try {
-            if (recordButton.isChecked()) {
-                if (hasRecordPermission()) {
-                    porcupineManager = initPorcupine();
-                    porcupineManager.start();
-
-                } else {
-                    requestRecordPermission();
-                }
+        if (recordButton.isChecked()) {
+            if (hasRecordPermission()) {
+                startPorcupine();
             } else {
-                porcupineManager.stop();
-                porcupineManager.delete();
+                requestRecordPermission();
             }
-        } catch (PorcupineException e) {
-            displayError("Something went wrong");
+        } else {
+            stopPorcupine();
         }
     }
 }

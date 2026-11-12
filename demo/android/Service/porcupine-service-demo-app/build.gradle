@@ -1,13 +1,14 @@
 apply plugin: 'com.android.application'
 
 android {
-    compileSdkVersion 30
+    def agpVersion = com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION
+    compileSdk defaultTargetSdkVersion
     defaultConfig {
-        applicationId "com.example.androidforegroundservice"
-        minSdkVersion 19
-        targetSdkVersion 30
+        applicationId "ai.picovoice.porcupinedemoservice"
+        minSdkVersion 21
+        targetSdkVersion defaultTargetSdkVersion
         versionCode 1
-        versionName "1.0"
+        versionName "4.0.0"
     }
     buildTypes {
         release {
@@ -15,15 +16,21 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+    buildFeatures {
+        buildConfig true
+    }
     compileOptions {
-        sourceCompatibility = 1.8
-        targetCompatibility = 1.8
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    if (agpVersion.tokenize('.')[0].toInteger() >= 7) {
+        namespace 'ai.picovoice.porcupinedemoservice'
     }
 }
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
-    implementation 'androidx.appcompat:appcompat:1.3.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.0.4'
-    implementation 'ai.picovoice:porcupine-android:1.9.5'
+    implementation 'androidx.appcompat:appcompat:1.3.1'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'ai.picovoice:porcupine-android:4.0.2'
 }
